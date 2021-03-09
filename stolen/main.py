@@ -1,91 +1,41 @@
 import os
-from Feature_extract import feature_transform
+
 import hydra
-from omegaconf import DictConfig, OmegaConf
+import tensorflow as tf
+from omegaconf import DictConfig
+
+from dataset import tf_dataset
+from Feature_extract import feature_transform
+from model import create_baseline_model
 
 
-"""
-def train_protonet(model,train_loader,valid_loader,conf,num_batches_tr,num_batches_vd):
+def train_protonet(model, train_dataset, val_dataset, conf):
+    opt = tf.optimizers.Adam(conf.train.lr_rate)
+    loss_fn = tf.losses.SparseCategoricalCrossentropy(from_logits=True)
 
-    '''Model training
-    Args:
-    -model: Model
-    -train_laoder: Training loader
-    -valid_load: Valid loader
-    -conf: configuration object
-    -num_batches_tr: number of training batches
-    -num_batches_vd: Number of validation batches
+    metrics = [tf.metrics.SparseCategoricalAccuracy()]
+    model.compile(optimizer=opt, loss=loss_fn, metrics=metrics)
 
-    Out:
-    -best_val_acc: Best validation accuracy
-    -model
-    -best_state: State dictionary for the best validation accuracy
-    '''
+    def lr_scheduler(epoch, lr):
+        if epoch > 0 and not epoch % conf.train.scheduler_step_size:
+            return lr / conf.train.scheduler_gamma
+        return lr
 
-    if conf.train.device == 'cuda':
-        device = torch.device('cuda')
-    else:
-        device = torch.device('cpu')
+    callback_lr = tf.keras.callbacks.LearningRateScheduler(lr_scheduler)
+    # TODO don't hardcode
+    # TODO use validation set only once.........
+    oversampled_size = 110485
+    steps_per_epoch = (int(oversampled_size*0.75) //
+                       (2*conf.train.n_shot * conf.train.kway))
+    val_steps = (int(oversampled_size*0.25) //
+                 (2*conf.train.n_shot * conf.train.kway))
+    history = model.fit(train_dataset, validation_data=val_dataset,
+                        epochs=conf.train.epochs,
+                        steps_per_epoch=steps_per_epoch,
+                        validation_steps=val_steps,
+                        callbacks=[callback_lr])
 
-    optim = torch.optim.Adam(model.parameters(), lr=conf.train.lr_rate)
-    lr_scheduler = torch.optim.lr_scheduler.StepLR(optimizer=optim, gamma=conf.train.scheduler_gamma,
-                                                   step_size=conf.train.scheduler_step_size)
-    num_epochs = conf.train.epochs
-
-    best_model_path = conf.path.best_model
-    last_model_path = conf.path.last_model
-    train_loss = []
-    val_loss = []
-    train_acc = []
-    val_acc = []
-    best_val_acc = 0.0
-    model.to(device)
-
-    for epoch in range(num_epochs):
-
-        print("Epoch {}".format(epoch))
-        train_iterator = iter(train_loader)
-        for batch in tqdm(train_iterator):
-            optim.zero_grad()
-            model.train()
-            x, y = batch
-            x = x.to(device)
-            y = y.to(device)
-            x_out = model(x)
-            tr_loss,tr_acc = loss_fn(x_out,y,conf.train.n_shot)
-            train_loss.append(tr_loss.item())
-            train_acc.append(tr_acc.item())
-
-            tr_loss.backward()
-            optim.step()
-
-        avg_loss_tr = np.mean(train_loss[-num_batches_tr:])
-        avg_acc_tr = np.mean(train_acc[-num_batches_tr:])
-        print('Average train loss: {}  Average training accuracy: {}'.format(avg_loss_tr,avg_acc_tr))
-        lr_scheduler.step()
-        model.eval()
-        val_iterator = iter(valid_loader)
-
-        for batch in tqdm(val_iterator):
-            x,y = batch
-            x = x.to(device)
-            x_val = model(x)
-            valid_loss, valid_acc = loss_fn(x_val, y, conf.train.n_shot)
-            val_loss.append(valid_loss.item())
-            val_acc.append(valid_acc.item())
-        avg_loss_vd = np.mean(val_loss[-num_batches_vd:])
-        avg_acc_vd = np.mean(val_acc[-num_batches_vd:])
-
-        print ('Epoch {}, Validation loss {:.4f}, Validation accuracy {:.4f}'.format(epoch,avg_loss_vd,avg_acc_vd))
-        if avg_acc_vd > best_val_acc:
-            print("Saving the best model with valdation accuracy {}".format(avg_acc_vd))
-            best_val_acc = avg_acc_vd
-            best_state = model.state_dict()
-            torch.save(model.state_dict(),best_model_path)
-    torch.save(model.state_dict(),last_model_path)
-
-    return best_val_acc,model,best_state
-"""
+    return history
 
 
 @hydra.main(config_name="config")
@@ -101,7 +51,6 @@ def main(conf: DictConfig):
         os.makedirs(conf.path.feat_eval)
 
     if conf.set.features:
-
         print(" --Feature Extraction Stage--")
         Num_extract_train,data_shape = feature_transform(conf=conf,mode="train")
         print("Shape of dataset is {}".format(data_shape))
@@ -111,43 +60,16 @@ def main(conf: DictConfig):
         print("Total number of samples used for evaluation: {}".format(Num_extract_eval))
         print(" --Feature Extraction Complete--")
 
-
-    """
     if conf.set.train:
-
         if not os.path.isdir(conf.path.Model):
             os.makedirs(conf.path.Model)
 
+        train_dataset, val_dataset = tf_dataset(conf)
 
-        gen_train = Datagen(conf)
-        X_train,Y_train,X_val,Y_val = gen_train.generate_train()
-        X_tr = torch.tensor(X_train)
-        Y_tr = torch.LongTensor(Y_train)
-        X_val = torch.tensor(X_val)
-        Y_val = torch.LongTensor(Y_val)
+        model = create_baseline_model()
+        train_protonet(model, train_dataset, val_dataset, conf)
+        #print("Best accuracy of the model on training set is {}".format(best_acc))
 
-        samples_per_cls =  conf.train.n_shot * 2
-
-        batch_size_tr = samples_per_cls * conf.train.k_way
-        batch_size_vd = batch_size_tr
-
-        num_batches_tr = len(Y_train)//batch_size_tr
-        num_batches_vd = len(Y_val)//batch_size_vd
-
-
-        samplr_train = EpisodicBatchSampler(Y_train,num_batches_tr,conf.train.k_way,samples_per_cls)
-        samplr_valid = EpisodicBatchSampler(Y_val,num_batches_vd,conf.train.k_way,samples_per_cls)
-
-        train_dataset = torch.utils.data.TensorDataset(X_tr,Y_tr)
-        valid_dataset = torch.utils.data.TensorDataset(X_val,Y_val)
-
-        train_loader = torch.utils.data.DataLoader(dataset=train_dataset,batch_sampler=samplr_train,num_workers=8,pin_memory=True,shuffle=False)
-        valid_loader = torch.utils.data.DataLoader(dataset=valid_dataset,batch_sampler=samplr_valid,num_workers=8,pin_memory=True,shuffle=False)
-
-        model = Protonet()
-        best_acc,model,best_state = train_protonet(model,train_loader,valid_loader,conf,num_batches_tr,num_batches_vd)
-        print("Best accuracy of the model on training set is {}".format(best_acc))
-    """
 
     """
     if conf.set.eval:

@@ -50,8 +50,7 @@ def per_class_dataset(x, y, batch_size):
     datasets = []
     for class_ind in range(n_classes):
         x_class = x[y == class_ind]
-        y_class = y[y == class_ind]  # duh
-        class_data = tf.data.Dataset.from_tensor_slices((x_class, y_class))
+        class_data = tf.data.Dataset.from_tensor_slices(x_class)
         class_data = class_data.repeat()
         datasets.append(class_data)
 

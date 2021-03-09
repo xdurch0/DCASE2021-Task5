@@ -44,7 +44,7 @@ class BaselineProtonet(tf.keras.Model):
 
         n_classes = len(inputs)
         # TODO support (lol) different configurations
-        n_support = tf.shape(inputs[0]) // 2
+        n_support = tf.shape(inputs[0])[0] // 2
         n_query = n_support
 
         # process as one batch of size b = n_classes * (n_support + n_query)

@@ -56,7 +56,7 @@ def per_class_dataset(x, y, batch_size):
         datasets.append(class_data)
 
     # may be able to do this with interleave once I understand how it works lol
-    return tf.data.Dataset.zip(datasets).batch(batch_size)
+    return tf.data.Dataset.zip(tuple(datasets)).batch(batch_size)
 
 
 def tf_dataset(conf):

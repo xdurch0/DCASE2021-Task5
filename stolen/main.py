@@ -26,9 +26,9 @@ def train_protonet(model, train_dataset, val_dataset, conf):
     # TODO use validation set only once.........
     oversampled_size = 110485
     steps_per_epoch = (int(oversampled_size*0.75) //
-                       (2*conf.train.n_shot * conf.train.kway))
+                       (2*conf.train.n_shot * conf.train.k_way))
     val_steps = (int(oversampled_size*0.25) //
-                 (2*conf.train.n_shot * conf.train.kway))
+                 (2*conf.train.n_shot * conf.train.k_way))
     history = model.fit(train_dataset, validation_data=val_dataset,
                         epochs=conf.train.epochs,
                         steps_per_epoch=steps_per_epoch,

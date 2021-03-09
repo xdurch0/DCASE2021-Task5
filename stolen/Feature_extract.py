@@ -1,11 +1,11 @@
 import os
-import librosa
-import h5py
-import pandas as pd
-import numpy as np
-from scipy import signal
-from glob import glob
 from itertools import chain
+
+import h5py
+import librosa
+import numpy as np
+import pandas as pd
+from glob import glob
 
 pd.options.mode.chained_assignment = None
 
@@ -75,7 +75,8 @@ def create_dataset(df_pos, pcen, glob_cls_name, file_name, hf, seg_len, hop_seg,
             file_index += 1
         else:
 
-            'If patch length is less than segment length then tile the patch multiple times till it reaches the segment length'
+            # If patch length is less than segment length then tile the patch
+            # multiple times till it reaches the segment length'
 
             pcen_patch = pcen[str_ind:end_ind]
             if pcen_patch.shape[0] == 0:
@@ -196,6 +197,7 @@ def feature_transform(conf=None, mode=None):
             audio_path = file.replace('csv', 'wav')
             print("Processing file name {}".format(audio_path))
             pcen = extract_feature(audio_path, pcen_extractor, conf)
+            print("Features extracted!")
             df_pos = df[(df == 'POS').any(axis=1)]
             label_list = create_dataset(df_pos, pcen, glob_cls_name, file_name,
                                         hf, seg_len, hop_seg, fps)
@@ -235,6 +237,7 @@ def feature_transform(conf=None, mode=None):
             name = str(split_list[-1].split('.')[0])
             feat_name = name + '.h5'
             audio_path = file.replace('csv', 'wav')
+            print("Processing file name {}".format(audio_path))
             feat_info = []
             hdf_eval = os.path.join(conf.path.feat_eval, feat_name)
             hf = h5py.File(hdf_eval, 'w')
@@ -262,6 +265,7 @@ def feature_transform(conf=None, mode=None):
             index_sup = np.where(Q_list == 'POS')[0][:conf.train.n_shot]
 
             pcen = extract_feature(audio_path, pcen_extractor, conf)
+            print("Features extracted!")
             mean = np.mean(pcen)
             std = np.mean(pcen)
             hf['mean_global'][:] = mean

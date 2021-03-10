@@ -18,7 +18,6 @@ from sklearn.model_selection import train_test_split
 
 
 def class_to_int(label_array, class_set):
-    # TODO make this trustworthy (in terms of mapping order)
     """Convert class label to integer
     Args:
     -label_array: label array
@@ -29,20 +28,6 @@ def class_to_int(label_array, class_set):
     label2index = {label: index for index, label in enumerate(class_set)}
     y = np.array([label2index[label] for label in label_array], dtype=np.int32)
     return y
-
-
-def norm_params(x):
-    """Return shift and scale parameters for normalization.
-
-    Arguments:
-        x: Features
-
-    Returns:
-        mean and standard deviation of x (over all dimensions).
-    """
-    mean = np.mean(x)
-    std = np.std(x)
-    return mean, std
 
 
 def per_class_dataset(x, y, batch_size):
@@ -86,5 +71,46 @@ def tf_dataset(conf):
             per_class_dataset(x_test, y_test, batch_size))
 
 
+def dataset_eval(hf, conf):
+    # TODO don't copy-paste
+    hdf_path = os.path.join(conf.path.feat_train, 'Mel_train.h5')
+    hdf_train = h5py.File(hdf_path, 'r+')
+    x = hdf_train['features'][()]
+    labels = [s.decode() for s in hdf_train['labels'][()]]
+
+    class_set = sorted(set(labels))
+
+    y = class_to_int(labels, class_set)
+
+    x_train, x_test, y_train, y_test = train_test_split(x, y,
+                                                        random_state=12,
+                                                        stratify=y)
+
+    mean, std = norm_params(x_train)
+
+    x_pos = hf['feat_pos'][()]
+    x_neg = hf['feat_neg'][()]
+    x_query = hf['feat_query'][()]
+
+    x_pos = feature_scale(x_pos, mean, std)
+    x_neg = feature_scale(x_neg, mean, std)
+    x_query = feature_scale(x_query, mean, std)
+
+
 def feature_scale(x, shift, scale):
     return (x - shift) / scale
+
+
+def norm_params(x):
+    """Return shift and scale parameters for normalization.
+
+    Arguments:
+        x: Features
+
+    Returns:
+        mean and standard deviation of x (over all dimensions).
+    """
+    mean = np.mean(x)
+    std = np.std(x)
+    return mean, std
+

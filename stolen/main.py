@@ -40,6 +40,8 @@ def train_protonet(model, train_dataset, val_dataset, conf):
                         validation_steps=val_steps,
                         callbacks=[callback_lr])
 
+    model.save_weights(conf.path.last_model)
+
     return history
 
 

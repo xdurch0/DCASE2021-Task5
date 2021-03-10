@@ -130,8 +130,7 @@ class BaselineProtonet(tf.keras.Model):
         # do note that we use the *negative* distances as logits
         # loss = tf.nn.softmax_cross_entropy_with_logits(
         #     labels=labels, logits=logits)
-        loss = self.compiled_loss(labels, logits,
-                                  regularization_losses=self.losses)
+        self.compiled_loss(labels, logits, regularization_losses=self.losses)
 
         self.compiled_metrics.update_state(labels, logits)
         # Return a dict mapping metric names to current value

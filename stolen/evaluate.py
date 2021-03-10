@@ -56,7 +56,7 @@ def evaluate_prototypes(conf=None, hdf_eval=None, start_index_query=None,
     dataset_query = dataset_query.batch(conf.eval.query_batch_size)
 
     model = create_baseline_model()
-    model.load_weights(conf.path.last_model)
+    model.load_weights(conf.path.best_model)
 
     positive_embeddings = model(x_pos)
     positive_prototype = positive_embeddings.numpy().mean(axis=0)

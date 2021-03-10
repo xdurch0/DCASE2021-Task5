@@ -39,12 +39,14 @@ def train_protonet(train_dataset, val_dataset, conf):
     metrics = [tf.metrics.SparseCategoricalAccuracy()]
     model.compile(optimizer=opt, loss=loss_fn, metrics=metrics)
 
-    def lr_scheduler(epoch, lr):
-        if epoch > 0 and not epoch % conf.train.scheduler_step_size:
-            return lr / conf.train.scheduler_gamma
-        return lr
+    callback_lr = tf.keras.callbacks.ReduceLROnPlateau(
+        factor=0.5, patience=5, verbose=1)
+    early_stopping = tf.keras.callbacks.EarlyStopping(patience=8, verbose=1)
+    checkpoints = tf.keras.callbacks.ModelCheckpoint(
+        conf.path.best_model, verbose=1, save_weights_only=1,
+        save_best_only=True)
+    callbacks = [callback_lr, checkpoints, early_stopping]
 
-    callback_lr = tf.keras.callbacks.LearningRateScheduler(lr_scheduler)
     # TODO don't hardcode
     # TODO use validation set only once.........
     oversampled_size = 110485
@@ -56,7 +58,7 @@ def train_protonet(train_dataset, val_dataset, conf):
                         epochs=conf.train.epochs,
                         steps_per_epoch=steps_per_epoch,
                         validation_steps=val_steps,
-                        callbacks=[callback_lr])
+                        callbacks=callbacks)
 
     model.save_weights(conf.path.last_model)
 

@@ -32,7 +32,7 @@ train:
   lr_rate: 0.0001
   scheduler_gamma: 0.5
   scheduler_step_size: 10
-  epochs: 15
+  epochs: 100
 
 eval:
   samples_neg: 650

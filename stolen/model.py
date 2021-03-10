@@ -3,6 +3,15 @@ tfkl = tf.keras.layers
 
 
 def baseline_block(inp):
+    """Calculate a simple convolution block.
+
+    Parameters:
+        inp: The input to the block.
+
+    Returns:
+        pool: Result of max pooling.
+
+    """
     conv = tfkl.Conv2D(128, 3, padding="same")(inp)
     bn = tfkl.BatchNormalization()(conv)
     activation = tfkl.ReLU()(bn)
@@ -11,6 +20,12 @@ def baseline_block(inp):
 
 
 def create_baseline_model():
+    """Create a simple model structure for the Protypical Network.
+
+    Returns:
+        tf.keras.Model-inherited instance.
+
+    """
     inp = tf.keras.Input(shape=(17, 128))
     inp_channel = tfkl.Reshape((17, 128, 1))(inp)
     b1 = baseline_block(inp_channel)
@@ -24,83 +39,58 @@ def create_baseline_model():
 
 
 class BaselineProtonet(tf.keras.Model):
-    def train_step(self, data):
-        # data is a batch of tuples, 1 element per class
-        # each element is again a tensor input_batch.
-        # we should stack the inputs into a big batch and
-        #  run all of them through the model.
-        # OR always take first half of each batch, stack them into support batch
-        #  and take second half, stack those into query batch.
-        # could also do this division after running through the model, but could
-        #  be more annoying (was ez lol).
-        # then compute avg of the support embeddings per class
-        # then compute euclidean distance between each query embedding and
-        #  all support embeddings
-        # then compute softmax
-        # then compute cross-entropy wrt real labels
-        inputs = data
+    """Class for Functional model with custom training/evaluation step.
 
-        n_classes = len(inputs)
+    Assumes a zipped dataset as input where each zip-element contains data for
+    one class. This maps all inputs to embeddings, splits it into support and
+    query sets, computes one prototype per class and then the distance of all
+    query points to all prototypes.
+    (Negative) Distances are converted to a probability and cross-entropy
+    between this distribution and the true classes is used as a loss function.
+
+    """
+
+    @staticmethod
+    def process_batch_input(data_batch):
+        """Stack zipped data batches into a single one.
+
+        Parameters:
+            data_batch: Tuple of data batches, one per class.
+
+        Returns:
+            inputs_stacked: Single tensor where first dimension is
+                            n_classes*batch_size_per_class.
+            n_classes: How many classes there are.
+            n_support: Size of support sets.
+            n_query: Size of query sets.
+
+        """
+        n_classes = len(data_batch)
         # TODO support (lol) different configurations
-        n_support = tf.shape(inputs[0])[0] // 2
+        n_support = tf.shape(data_batch[0])[0] // 2
         n_query = n_support
 
-        # process as one batch of size b = n_classes * (n_support + n_query)
-        inputs_stacked = tf.concat(inputs, axis=0)
-        with tf.GradientTape() as tape:
-            embeddings_stacked = self(inputs_stacked, training=True)
-            # assumes that embeddings are 1D, so stacked thingy is a
-            #  matrix (b x d)
-            embeddings_per_class = tf.reshape(
-                embeddings_stacked, [n_classes, n_support + n_query, -1])
-            support_set = embeddings_per_class[:, :n_support]
-            query_set = embeddings_per_class[:, n_support:]
-            query_set = tf.reshape(query_set, [n_classes*n_query, -1])
+        inputs_stacked = tf.concat(data_batch, axis=0)
 
-            # n_classes x d
-            prototypes = tf.reduce_mean(support_set, axis=1)
+        return inputs_stacked, n_classes, n_support, n_query
 
-            # distance matrix
-            # for each element in the n_classes*n_query x d query_set, compute
-            #  euclidean distance to each element in the n_classes x d
-            #  prototypes
-            # result could be n_classes*n_query x n_classes
-            # can broadcast prototypes over first dim of query_set and insert
-            #  one axis in query_set (axis 1).
-            euclidean_dists = tf.norm(query_set[:, None] - prototypes[None],
-                                      axis=-1)
-            logits = -1 * euclidean_dists
-            # class_probs = tf.nn.softmax(logits, axis=-1)
+    def proto_compute_loss(self, inputs_stacked, n_classes, n_support, n_query,
+                           training=False):
+        """Compute the training loss for the Prototypical Network.
 
-            labels = tf.repeat(tf.range(n_classes, dtype=tf.int32),
-                               repeats=[n_query])
+        Parameters:
+            inputs_stacked: As returned by process_batch_input.
+            n_classes: See above.
+            n_support: See above.
+            n_query: See above!!!!!!1
 
-            # do note that we use the *negative* distances as logits
-            # loss = tf.nn.softmax_cross_entropy_with_logits(
-            #     labels=labels, logits=logits)
-            loss = self.compiled_loss(labels, logits,
-                                      regularization_losses=self.losses)
-        trainable_vars = self.trainable_variables
-        gradients = tape.gradient(loss, trainable_vars)
-        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+        Returns:
+            loss: Loss on this input batch.
+            logits: Logits returned by the model.
+            labels: Labels as constructed from the batch information.
 
-        self.compiled_metrics.update_state(labels, logits)
-        # Return a dict mapping metric names to current value
-        return {m.name: m.result() for m in self.metrics}
-
-    # TODO don't copy-paste, LOL
-    def test_step(self, data):
-        inputs = data
-
-        n_classes = len(inputs)
-        # TODO support (lol) different configurations
-        n_support = tf.shape(inputs[0])[0] // 2
-        n_query = n_support
-
-        # process as one batch of size b = n_classes * (n_support + n_query)
-        inputs_stacked = tf.concat(inputs, axis=0)
-
-        embeddings_stacked = self(inputs_stacked, training=True)
+        """
+        embeddings_stacked = self(inputs_stacked, training=training)
         # assumes that embeddings are 1D, so stacked thingy is a
         #  matrix (b x d)
         embeddings_per_class = tf.reshape(
@@ -122,15 +112,59 @@ class BaselineProtonet(tf.keras.Model):
         euclidean_dists = tf.norm(query_set[:, None] - prototypes[None],
                                   axis=-1)
         logits = -1 * euclidean_dists
-        # class_probs = tf.nn.softmax(logits, axis=-1)
 
         labels = tf.repeat(tf.range(n_classes, dtype=tf.int32),
                            repeats=[n_query])
 
-        # do note that we use the *negative* distances as logits
-        # loss = tf.nn.softmax_cross_entropy_with_logits(
-        #     labels=labels, logits=logits)
-        self.compiled_loss(labels, logits, regularization_losses=self.losses)
+        loss = self.compiled_loss(labels, logits,
+                                  regularization_losses=self.losses)
+
+        return loss, logits, labels
+
+    def train_step(self, data):
+        """Perform a single training step given a batch of data.
+
+        Parameters:
+            data: Tuple of tensors; one element per class. Each element is a
+                  3D tensor batch x time x channels (features).
+
+        Returns:
+            Dictionary of current metrics.
+
+        """
+        # process input as one batch of size
+        #  b = n_classes * (n_support + n_query)
+        inputs_stacked, n_classes, n_support, n_query = \
+            self.process_batch_input(data)
+
+        with tf.GradientTape() as tape:
+            loss, logits, labels = self.proto_compute_loss(
+                inputs_stacked, n_classes, n_support, n_query, training=True)
+
+        trainable_vars = self.trainable_variables
+        gradients = tape.gradient(loss, trainable_vars)
+        self.optimizer.apply_gradients(zip(gradients, trainable_vars))
+
+        self.compiled_metrics.update_state(labels, logits)
+        # Return a dict mapping metric names to current value
+        return {m.name: m.result() for m in self.metrics}
+
+    def test_step(self, data):
+        """Perform a single test/evaluation step given a batch of data.
+
+        Parameters:
+            data: Tuple of tensors; one element per class. Each element is a
+                  3D tensor batch x time x channels (features).
+
+        Returns:
+            Dictionary of current metrics.
+
+        """
+        inputs_stacked, n_classes, n_support, n_query = \
+            self.process_batch_input(data)
+
+        loss, logits, labels = self.proto_compute_loss(
+            inputs_stacked, n_classes, n_support, n_query, training=False)
 
         self.compiled_metrics.update_state(labels, logits)
         # Return a dict mapping metric names to current value

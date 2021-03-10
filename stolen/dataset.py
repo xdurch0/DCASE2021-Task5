@@ -17,14 +17,17 @@ from sklearn.model_selection import train_test_split
 # - sampling support + query samples can be achieved via dataset.batch()
 
 
-def class_to_int(label_array, class_set):
-    """Convert class label to integer
-    Args:
-    -label_array: label array
-    -class_set: unique classes in label_array
-    Out:
-    -y: label to index values
+def class_to_int(label_array):
+    """Convert string class labels to integer.
+
+    Parameters:
+        label_array: Array containing string labels.
+
+    Returns:
+        Array of integers.
+
     """
+    class_set = sorted(set(label_array))
     label2index = {label: index for index, label in enumerate(class_set)}
     y = np.array([label2index[label] for label in label_array], dtype=np.int32)
     return y
@@ -49,9 +52,7 @@ def tf_dataset(conf):
     x = hdf_train['features'][()]
     labels = [s.decode() for s in hdf_train['labels'][()]]
 
-    class_set = sorted(set(labels))
-
-    y = class_to_int(labels, class_set)
+    y = class_to_int(labels)
 
     x_train, x_test, y_train, y_test = train_test_split(x, y,
                                                         random_state=12,
@@ -78,9 +79,7 @@ def dataset_eval(hf, conf):
     x = hdf_train['features'][()]
     labels = [s.decode() for s in hdf_train['labels'][()]]
 
-    class_set = sorted(set(labels))
-
-    y = class_to_int(labels, class_set)
+    y = class_to_int(labels)
 
     x_train, x_test, y_train, y_test = train_test_split(x, y,
                                                         random_state=12,
@@ -96,8 +95,21 @@ def dataset_eval(hf, conf):
     x_neg = feature_scale(x_neg, mean, std)
     x_query = feature_scale(x_query, mean, std)
 
+    return x_pos, x_neg, x_query
+
 
 def feature_scale(x, shift, scale):
+    """Linear normalization of data via shift and scale.
+
+    Parameters:
+        x: Data to normalize (np array).
+        shift: "Location" that should be subtracted.
+        scale: Factor to divide by.
+
+    Returns:
+        Normalized data.
+
+    """
     return (x - shift) / scale
 
 
@@ -109,6 +121,7 @@ def norm_params(x):
 
     Returns:
         mean and standard deviation of x (over all dimensions).
+
     """
     mean = np.mean(x)
     std = np.std(x)

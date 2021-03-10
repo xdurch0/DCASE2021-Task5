@@ -14,7 +14,25 @@ from feature_extract import feature_transform
 from model import create_baseline_model
 
 
-def train_protonet(model, train_dataset, val_dataset, conf):
+def train_protonet(train_dataset, val_dataset, conf):
+    """Train a Prototypical Network.
+
+    Currently only the final model is stored. Training is done from scratch.
+
+    Parameters:
+        train_dataset: tf.data.Dataset containing training data.
+        val_dataset: tf.data.Dataset containing validation data. This data is
+                     only meant for validating the n-way task the model is
+                     trained on; it is not the "evaluation data" of the DCASE
+                     challenge.
+        conf: hydra config object.
+
+    Returns:
+        history: history object obtained by keras.fit.
+
+    """
+    model = create_baseline_model()
+
     opt = tf.optimizers.Adam(conf.train.lr_rate)
     loss_fn = tf.losses.SparseCategoricalCrossentropy(from_logits=True)
 
@@ -47,13 +65,17 @@ def train_protonet(model, train_dataset, val_dataset, conf):
 
 @hydra.main(config_name="config")
 def main(conf: DictConfig):
+    """Main entry point. Extract features, train, or evaluate.
+
+    Parameters:
+        conf: config as produced by hydra via YAML file.
+
+    """
 
     if not os.path.isdir(conf.path.feat_path):
         os.makedirs(conf.path.feat_path)
-
     if not os.path.isdir(conf.path.feat_train):
         os.makedirs(conf.path.feat_train)
-
     if not os.path.isdir(conf.path.feat_eval):
         os.makedirs(conf.path.feat_eval)
 
@@ -74,10 +96,7 @@ def main(conf: DictConfig):
 
         train_dataset, val_dataset = tf_dataset(conf)
 
-        model = create_baseline_model()
-        train_protonet(model, train_dataset, val_dataset, conf)
-        # print("Best accuracy of the model on training set is
-        # {}".format(best_acc))
+        train_protonet(train_dataset, val_dataset, conf)
 
     if conf.set.eval:
         name_arr = np.array([])
@@ -93,8 +112,9 @@ def main(conf: DictConfig):
             print("Processing audio file : {}".format(audio_name))
 
             hdf_eval = h5py.File(feat_file, 'r')
-            strt_index_query = hdf_eval['start_index_query'][()][0]
-            onset, offset = evaluate_prototypes(conf, hdf_eval, strt_index_query)
+            start_index_query = hdf_eval['start_index_query'][()][0]
+            onset, offset = evaluate_prototypes(
+                conf, hdf_eval, start_index_query)
 
             name = np.repeat(audio_name, len(onset))
             name_arr = np.append(name_arr, name)

@@ -6,35 +6,46 @@ from model import create_baseline_model
 
 
 def get_probability(positive_prototype, negative_prototype, query_embeddings):
-    """Calculates the  probability of each query point belonging to either the positive or negative class
-     Args:
-     - x_pos : Model output for the positive class
-     - neg_proto : Negative class prototype calculated from randomly chosed 100 segments across the audio file
-     - query_set_out:  Model output for the first 8 samples of the query set
-     Out:
-     - Probabiility array for the positive class
+    """Calculate the probability of queries belonging to the positive class.
+
+    Parameters:
+        positive_prototype: 1D tensor-like, size d.
+        negative_prototype: 1D tensor-like, size d.
+        query_embeddings: 2D tensor-like, n x d.
+
+    Returns:
+        probs_ops: 1D tensor-like, size n; for each row in query_embeddings,
+                   contains the probability that this query belongs to the
+                   positive class.
+
      """
     prototypes = tf.stack([positive_prototype, negative_prototype], axis=0)
     dists = tf.norm(prototypes[None] - query_embeddings[:, None], axis=-1)
     logits = -1 * dists
 
-    probs = tf.nn.softmax(logits, dim=-1)
+    probs = tf.nn.softmax(logits, axis=-1)
     probs_pos = probs[:, 0].numpy().tolist()
 
     return probs_pos
 
 
-def evaluate_prototypes(conf=None, hdf_eval=None, strt_index_query=None):
-    """ Run the evaluation
-    Args:
-     - conf: config object
-     - hdf_eval: Features from the audio file
-     - device:  cuda/cpu
-     - str_index_query : start frame of the query set w.r.t to the original file
+def evaluate_prototypes(conf=None, hdf_eval=None, start_index_query=None,
+                        threshold=0.5):
+    """Run the evaluation for a single dataset.
 
-     Out:
-     - onset: Onset array predicted by the model
-     - offset: Offset array predicted by the model
+    Parameters:
+        conf: hydra config object.
+        hdf_eval: hdf5 file object containing positive, negative and query
+                  features.
+        start_index_query: Start frame of the query set with respect to the full
+                          file (i.e. negative set).
+        threshold: Float, threshold above which an output probability is
+                   regarded as positive.
+
+    Returns:
+        onset: 1d numpy array of predicted onset times.
+        offset: 1d numpy array of predicted "offset" (i.e. end-of-event) times.
+
       """
     hop_seg = int(conf.features.hop_seg * conf.features.sr //
                   conf.features.hop_mel)
@@ -75,25 +86,27 @@ def evaluate_prototypes(conf=None, hdf_eval=None, strt_index_query=None):
             prob_pos_iter.extend(probability_pos)
 
         probs_per_iter.append(prob_pos_iter)
-    prob_final = np.mean(np.array(probs_per_iter),axis=0)
+    prob_final = np.mean(np.array(probs_per_iter), axis=0)
 
     krn = np.array([1, -1])
-    prob_thresh = np.where(prob_final > 0.5, 1, 0)
+    prob_thresh = np.where(prob_final > threshold, 1, 0)
 
-    prob_pos_final = prob_final * prob_thresh
+    # prob_pos_final = prob_final * prob_thresh
     changes = np.convolve(krn, prob_thresh)
 
     onset_frames = np.where(changes == 1)[0]
     offset_frames = np.where(changes == -1)[0]
 
-    str_time_query = strt_index_query * conf.features.hop_mel / conf.features.sr
+    str_time_query = (start_index_query * conf.features.hop_mel /
+                      conf.features.sr)
 
-    onset = (onset_frames + 1) * (hop_seg) * conf.features.hop_mel / conf.features.sr
+    onset = ((onset_frames + 1) * hop_seg * conf.features.hop_mel /
+             conf.features.sr)
     onset = onset + str_time_query
 
-    offset = (offset_frames + 1) * (hop_seg) * conf.features.hop_mel / conf.features.sr
+    offset = ((offset_frames + 1) * hop_seg * conf.features.hop_mel /
+              conf.features.sr)
     offset = offset + str_time_query
 
     assert len(onset) == len(offset)
     return onset, offset
-

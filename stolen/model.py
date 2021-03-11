@@ -1,8 +1,10 @@
+from typing import Tuple, Union
+
 import tensorflow as tf
 tfkl = tf.keras.layers
 
 
-def baseline_block(inp):
+def baseline_block(inp: tf.Tensor) -> tf.Tensor:
     """Calculate a simple convolution block.
 
     Parameters:
@@ -19,11 +21,11 @@ def baseline_block(inp):
     return pool
 
 
-def create_baseline_model():
+def create_baseline_model() -> tf.keras.Model:
     """Create a simple model structure for the Protypical Network.
 
     Returns:
-        tf.keras.Model-inherited instance.
+        The built model.
 
     """
     inp = tf.keras.Input(shape=(17, 128))
@@ -51,7 +53,10 @@ class BaselineProtonet(tf.keras.Model):
     """
 
     @staticmethod
-    def process_batch_input(data_batch):
+    def process_batch_input(data_batch: tuple) -> Tuple[tf.Tensor,
+                                                        int,
+                                                        tf.Tensor,
+                                                        tf.Tensor]:
         """Stack zipped data batches into a single one.
 
         Parameters:
@@ -74,8 +79,13 @@ class BaselineProtonet(tf.keras.Model):
 
         return inputs_stacked, n_classes, n_support, n_query
 
-    def proto_compute_loss(self, inputs_stacked, n_classes, n_support, n_query,
-                           training=False):
+    def proto_compute_loss(self, inputs_stacked: tf.Tensor,
+                           n_classes: Union[int, tf.Tensor],
+                           n_support: Union[int, tf.Tensor],
+                           n_query: Union[int, tf.Tensor],
+                           training: bool = False) -> Tuple[tf.Tensor,
+                                                            tf.Tensor,
+                                                            tf.Tensor]:
         """Compute the training loss for the Prototypical Network.
 
         Parameters:
@@ -122,7 +132,7 @@ class BaselineProtonet(tf.keras.Model):
 
         return loss, logits, labels
 
-    def train_step(self, data):
+    def train_step(self, data: tuple) -> dict:
         """Perform a single training step given a batch of data.
 
         Parameters:
@@ -149,7 +159,7 @@ class BaselineProtonet(tf.keras.Model):
         self.compiled_metrics.update_state(labels, logits)
         return {m.name: m.result() for m in self.metrics}
 
-    def test_step(self, data):
+    def test_step(self, data: tuple) -> dict:
         """Perform a single test/evaluation step given a batch of data.
 
         Parameters:

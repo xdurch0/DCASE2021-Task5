@@ -1,3 +1,8 @@
+"""Code for (Tensorflow) dataset creation.
+
+Originally based on https://github.com/c4dm/dcase-few-shot-bioacoustic/blob/main/baselines/deep_learning/Datagenerator.py
+"""
+
 import os
 
 import h5py

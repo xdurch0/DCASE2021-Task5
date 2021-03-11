@@ -351,6 +351,12 @@ def feature_transform(conf, mode):
             start_index_query = end_times[support_indices[-1]]
             hf['start_index_query'][:] = start_index_query
 
+            # would be great to avoid this, as query data is basically part of
+            # the negative (all) data. However, the offset might be slightly
+            # different and so far I have not been able to get this right.
+            fill_simple(hf, "feat_query", pcen, seg_len_frames, hop_seg_frames,
+                        start_index=start_index_query)
+
             hf.close()
 
         return num_extract_eval

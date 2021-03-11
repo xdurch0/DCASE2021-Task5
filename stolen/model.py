@@ -83,6 +83,7 @@ class BaselineProtonet(tf.keras.Model):
             n_classes: See above.
             n_support: See above.
             n_query: See above!!!!!!1
+            training: Whether to run model in training mode (batch norm etc.).
 
         Returns:
             loss: Loss on this input batch.
@@ -146,7 +147,6 @@ class BaselineProtonet(tf.keras.Model):
         self.optimizer.apply_gradients(zip(gradients, trainable_vars))
 
         self.compiled_metrics.update_state(labels, logits)
-        # Return a dict mapping metric names to current value
         return {m.name: m.result() for m in self.metrics}
 
     def test_step(self, data):
@@ -167,5 +167,4 @@ class BaselineProtonet(tf.keras.Model):
             inputs_stacked, n_classes, n_support, n_query, training=False)
 
         self.compiled_metrics.update_state(labels, logits)
-        # Return a dict mapping metric names to current value
         return {m.name: m.result() for m in self.metrics}

@@ -40,8 +40,8 @@ def train_protonet(train_dataset, val_dataset, conf):
     model.compile(optimizer=opt, loss=loss_fn, metrics=metrics)
 
     callback_lr = tf.keras.callbacks.ReduceLROnPlateau(
-        factor=0.5, patience=5, verbose=1)
-    early_stopping = tf.keras.callbacks.EarlyStopping(patience=8, verbose=1)
+        factor=0.5, patience=3, verbose=1)
+    early_stopping = tf.keras.callbacks.EarlyStopping(patience=6, verbose=1)
     checkpoints = tf.keras.callbacks.ModelCheckpoint(
         conf.path.best_model, verbose=1, save_weights_only=1,
         save_best_only=True)

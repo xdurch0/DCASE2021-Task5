@@ -18,7 +18,7 @@ def get_probability(positive_prototype, negative_prototype, query_embeddings):
                    contains the probability that this query belongs to the
                    positive class.
 
-     """
+    """
     prototypes = tf.stack([positive_prototype, negative_prototype], axis=0)
     dists = tf.norm(prototypes[None] - query_embeddings[:, None], axis=-1)
     logits = -1 * dists
@@ -29,8 +29,7 @@ def get_probability(positive_prototype, negative_prototype, query_embeddings):
     return probs_pos
 
 
-def evaluate_prototypes(conf=None, hdf_eval=None, start_index_query=None,
-                        threshold=0.5):
+def evaluate_prototypes(conf, hdf_eval, start_index_query, threshold=0.5):
     """Run the evaluation for a single dataset.
 
     Parameters:
@@ -46,7 +45,7 @@ def evaluate_prototypes(conf=None, hdf_eval=None, start_index_query=None,
         onset: 1d numpy array of predicted onset times.
         offset: 1d numpy array of predicted "offset" (i.e. end-of-event) times.
 
-      """
+    """
     hop_seg = int(conf.features.hop_seg * conf.features.sr //
                   conf.features.hop_mel)
 
@@ -61,7 +60,6 @@ def evaluate_prototypes(conf=None, hdf_eval=None, start_index_query=None,
     positive_embeddings = model(x_pos)
     positive_prototype = positive_embeddings.numpy().mean(axis=0)
 
-    'List for storing the combined probability across all iterations'
     probs_per_iter = []
 
     batch_size_neg = conf.eval.negative_set_batch_size

@@ -34,6 +34,20 @@ def class_to_int(label_array):
 
 
 def per_class_dataset(x, y, batch_size):
+    """Create a "parallel" dataset of many classes.
+
+    Parameters:
+        x: np array with n rows (arbitrary shape). Generally the features.
+        y: 1D np array with n elements; the labels.
+        batch_size: What batch size to use. This will be applied per class.
+                    Should be n_support + n_query.
+
+    Returns:
+        Batched, zipped dataset, where each element is an endlessly repeating
+        dataset yielding samples of one class. Class labels are not returned
+        since they can easily be reconstructed from the parallel structure.
+
+    """
     n_classes = len(np.unique(y))
     datasets = []
     for class_ind in range(n_classes):
@@ -47,18 +61,16 @@ def per_class_dataset(x, y, batch_size):
 
 
 def tf_dataset(conf):
-    hdf_path = os.path.join(conf.path.feat_train, 'Mel_train.h5')
-    hdf_train = h5py.File(hdf_path, 'r+')
-    x = hdf_train['features'][()]
-    labels = [s.decode() for s in hdf_train['labels'][()]]
+    """Create TF datasets for training and "testing" (while training).
 
-    y = class_to_int(labels)
+    Parameters:
+        conf: hydra config object.
 
-    x_train, x_test, y_train, y_test = train_test_split(x, y,
-                                                        random_state=12,
-                                                        stratify=y)
+    Returns:
+        Two zipped datasets.
 
-    mean, std = norm_params(x_train)
+    """
+    x_train, x_test, y_train, y_test, mean, std = split_train_data(conf)
     x_train = feature_scale(x_train, mean, std)
     x_test = feature_scale(x_test, mean, std)
 
@@ -73,11 +85,46 @@ def tf_dataset(conf):
 
 
 def dataset_eval(hf, conf):
-    # TODO don't copy-paste
+    """Get the separate evaluation datasets and normalize them.
+
+    Parameters:
+        hf: Open hdf5 file with the evaluation data.
+        conf: hydra config object.
+
+    Returns:
+        Positive, negative and query evaluation sets.
+
+    """
+    x_train, x_test, y_train, y_test, mean, std = split_train_data(conf)
+
+    x_pos = hf['feat_pos'][()]
+    x_neg = hf['feat_neg'][()]
+    x_query = hf['feat_query'][()]
+    hf.close()
+
+    x_pos = feature_scale(x_pos, mean, std)
+    x_neg = feature_scale(x_neg, mean, std)
+    x_query = feature_scale(x_query, mean, std)
+
+    return x_pos, x_neg, x_query
+
+
+def split_train_data(conf):
+    """Split training data into train/test and compute statistics.
+
+    Parameters:
+        conf: hydra config object.
+
+    Returns:
+        x_train, x_test, y_train, y_test: Split.
+        mean, std: Mean and standard deviation of x_train.
+
+    """
     hdf_path = os.path.join(conf.path.feat_train, 'Mel_train.h5')
     hdf_train = h5py.File(hdf_path, 'r+')
     x = hdf_train['features'][()]
     labels = [s.decode() for s in hdf_train['labels'][()]]
+    hdf_train.close()
 
     y = class_to_int(labels)
 
@@ -87,15 +134,7 @@ def dataset_eval(hf, conf):
 
     mean, std = norm_params(x_train)
 
-    x_pos = hf['feat_pos'][()]
-    x_neg = hf['feat_neg'][()]
-    x_query = hf['feat_query'][()]
-
-    x_pos = feature_scale(x_pos, mean, std)
-    x_neg = feature_scale(x_neg, mean, std)
-    x_query = feature_scale(x_query, mean, std)
-
-    return x_pos, x_neg, x_query
+    return x_train, x_test, y_train, y_test, mean, std
 
 
 def feature_scale(x, shift, scale):
@@ -126,4 +165,3 @@ def norm_params(x):
     mean = np.mean(x)
     std = np.std(x)
     return mean, std
-

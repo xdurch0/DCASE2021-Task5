@@ -99,7 +99,8 @@ def dataset_eval(hf, conf):
 
     x_pos = hf['feat_pos'][()]
     x_neg = hf['feat_neg'][()]
-    x_query = hf['feat_query'][()]
+    query_start = hf["start_index_query"][()]
+    x_query = x_neg[query_start:]
     hf.close()
 
     x_pos = feature_scale(x_pos, mean, std)

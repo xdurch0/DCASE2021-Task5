@@ -1,8 +1,8 @@
 """Functions for feature extraction.
 
 Originally based on https://github.com/c4dm/dcase-few-shot-bioacoustic/blob/main/baselines/deep_learning/Feature_extract.pyf
-"""
 
+"""
 import os
 from itertools import chain
 

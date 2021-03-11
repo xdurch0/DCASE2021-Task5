@@ -1,8 +1,8 @@
 """Functions for evaluating trained models.
 
 Originally based on https://github.com/c4dm/dcase-few-shot-bioacoustic/blob/main/baselines/deep_learning/util.py
-"""
 
+"""
 import numpy as np
 import tensorflow as tf
 

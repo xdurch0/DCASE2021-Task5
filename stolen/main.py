@@ -1,7 +1,5 @@
 """Main entry point for everything.
 
-Originally based on https://github.com/c4dm/dcase-few-shot-bioacoustic/blob/main/baselines/deep_learning/main.py
-
 """
 import os
 from glob import glob
@@ -38,15 +36,17 @@ def train_protonet(train_dataset, val_dataset, conf):
     """
     model = create_baseline_model()
 
-    opt = tf.optimizers.Adam(conf.train.lr_rate)
+    opt = tf.optimizers.Adam(conf.train.lr)
     loss_fn = tf.losses.SparseCategoricalCrossentropy(from_logits=True)
 
     metrics = [tf.metrics.SparseCategoricalAccuracy()]
     model.compile(optimizer=opt, loss=loss_fn, metrics=metrics)
 
     callback_lr = tf.keras.callbacks.ReduceLROnPlateau(
-        factor=0.5, patience=3, verbose=1)
-    early_stopping = tf.keras.callbacks.EarlyStopping(patience=6, verbose=1)
+        factor=conf.train.scheduler_gamma,
+        patience=conf.train.patience, verbose=1)
+    early_stopping = tf.keras.callbacks.EarlyStopping(
+        patience=2*conf.train.patience, verbose=1)
     checkpoints = tf.keras.callbacks.ModelCheckpoint(
         conf.path.best_model, verbose=1, save_weights_only=1,
         save_best_only=True)

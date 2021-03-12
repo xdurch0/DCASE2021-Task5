@@ -29,14 +29,14 @@ train:
   n_shot: 5
   k_way : 10
   device: cuda
-  lr_rate: 0.0001
+  lr: 0.0001
   scheduler_gamma: 0.5
-  scheduler_step_size: 10
+  patience: 10
   epochs: 100
 
 eval:
   samples_neg: 650
-  iterations: 3
+  iterations: 5
   query_batch_size: 8
   negative_set_batch_size : 16
 

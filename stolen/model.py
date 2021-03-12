@@ -1,7 +1,5 @@
 """Code to build the Keras model.
 
-Architecture is currently the same as in https://github.com/c4dm/dcase-few-shot-bioacoustic/blob/main/baselines/deep_learning/Model.py
-
 """
 from typing import Tuple, Union
 

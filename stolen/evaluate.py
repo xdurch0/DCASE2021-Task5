@@ -1,25 +1,29 @@
 """Functions for evaluating trained models.
 
-Originally based on https://github.com/c4dm/dcase-few-shot-bioacoustic/blob/main/baselines/deep_learning/util.py
-
 """
+from typing import Union, Tuple
+
+import h5py
 import numpy as np
 import tensorflow as tf
+from omegaconf import DictConfig
 
 from dataset import dataset_eval
 from model import create_baseline_model
 
 
-def get_probability(positive_prototype, negative_prototype, query_embeddings):
+def get_probability(positive_prototype: Union[tf.Tensor, np.array],
+                    negative_prototype: Union[tf.Tensor, np.array],
+                    query_embeddings: Union[tf.Tensor, np.array]) -> np.array:
     """Calculate the probability of queries belonging to the positive class.
 
     Parameters:
-        positive_prototype: 1D tensor-like, size d.
-        negative_prototype: 1D tensor-like, size d.
-        query_embeddings: 2D tensor-like, n x d.
+        positive_prototype: 1D, size d.
+        negative_prototype: 1D, size d.
+        query_embeddings: 2D, n x d.
 
     Returns:
-        probs_ops: 1D tensor-like, size n; for each row in query_embeddings,
+        probs_ops: 1D, size n; for each row in query_embeddings,
                    contains the probability that this query belongs to the
                    positive class.
 
@@ -34,16 +38,19 @@ def get_probability(positive_prototype, negative_prototype, query_embeddings):
     return probs_pos
 
 
-def evaluate_prototypes(conf, hdf_eval, start_index_query, threshold=0.5):
+def evaluate_prototypes(conf: DictConfig,
+                        hdf_eval: h5py.File,
+                        start_index_query: int,
+                        threshold: float = 0.5) -> Tuple[np.array, np.array]:
     """Run the evaluation for a single dataset.
 
     Parameters:
         conf: hydra config object.
-        hdf_eval: hdf5 file object containing positive, negative and query
+        hdf_eval: Open hd5 file containing positive, negative and query
                   features.
         start_index_query: Start frame of the query set with respect to the full
                           file (i.e. negative set).
-        threshold: Float, threshold above which an output probability is
+        threshold: Threshold above which an output probability is
                    regarded as positive.
 
     Returns:

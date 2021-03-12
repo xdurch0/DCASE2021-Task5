@@ -173,24 +173,12 @@ def create_dataset(df_events, features, glob_cls_name, hf, seg_len, hop_len,
 
 class FeatureExtractor:
 
-    def __init__(self, conf):
-        self.sr = conf.features.sr
-        self.n_fft = conf.features.n_fft
-        self.hop = conf.features.hop_mel
-        self.n_mels = conf.features.n_mels
-        self.fmax = conf.features.fmax
+    def __init__(self):
+        pass
 
-    def extract_feature(self, audio):
-        mel_spec = librosa.feature.melspectrogram(audio, sr=self.sr,
-                                                  n_fft=self.n_fft,
-                                                  hop_length=self.hop,
-                                                  n_mels=self.n_mels,
-                                                  fmax=self.fmax)
-        #pcen = librosa.core.pcen(mel_spec, sr=self.sr)
-        pcen = np.log(mel_spec + 1e-8)
-        pcen = pcen.astype(np.float32)
-
-        return pcen
+    @staticmethod
+    def extract_feature(audio):
+        return audio[:, None].astype(np.float32)
 
 
 def extract_feature(audio_path, feature_extractor, conf):
@@ -205,12 +193,10 @@ def extract_feature(audio_path, feature_extractor, conf):
         Features in shape time x features.
 
     """
-    y, fs = librosa.load(audio_path, sr=conf.features.sr)
+    y, _ = librosa.load(audio_path, sr=conf.features.sr)
 
-    # Scaling audio as suggested for PCEN in librosa documentation
-    y *= (2 ** 31)
-    pcen = feature_extractor.extract_feature(y)
-    return pcen.T
+    y = feature_extractor.extract_feature(y)
+    return y
 
 
 def time_2_frame(df, fps):
@@ -227,7 +213,7 @@ def time_2_frame(df, fps):
     df.loc[:, 'Endtime'] = df['Endtime'] + 0.025
 
     # TODO is floor on both sensible??
-    start_time = [int(np.floor(start * fps)) for start in df['Starttime']]
+    start_time = [int(np.ceil(start * fps)) for start in df['Starttime']]
 
     end_time = [int(np.floor(end * fps)) for end in df['Endtime']]
 
@@ -264,10 +250,10 @@ def feature_transform(conf, mode):
 
     """
     labels_train = []
-    pcen_extractor = FeatureExtractor(conf)
+    raw_extractor = FeatureExtractor()
 
-    fps = conf.features.sr / conf.features.hop_mel
-    n_features = conf.features.n_mels
+    fps = conf.features.sr
+    n_features = 1
 
     seg_len_frames = int(round(conf.features.seg_len * fps))
     hop_seg_frames = int(round(conf.features.hop_seg * fps))
@@ -292,19 +278,19 @@ def feature_transform(conf, mode):
             df = pd.read_csv(file, header=0, index_col=False)
             audio_path = file.replace('csv', 'wav')
             print("Processing file name {}".format(audio_path))
-            pcen = extract_feature(audio_path, pcen_extractor, conf)
+            features = extract_feature(audio_path, raw_extractor, conf)
             print("Features extracted!")
 
             df_pos = df[(df == 'POS').any(axis=1)]
             df_neg = df[(df != 'POS').all(axis=1)]
-            label_list = create_dataset(df_pos, pcen, glob_cls_name, hf,
+            label_list = create_dataset(df_pos, features, glob_cls_name, hf,
                                         seg_len_frames, hop_seg_frames, fps,
                                         False)
             labels_train.append(label_list)
             print("Positive events added...")
 
             # use of this is highly questionable!
-            label_list = create_dataset(df_neg, pcen, glob_cls_name, hf,
+            label_list = create_dataset(df_neg, features, glob_cls_name, hf,
                                         seg_len_frames, hop_seg_frames, fps,
                                         True)
             labels_train.append(label_list)
@@ -340,15 +326,16 @@ def feature_transform(conf, mode):
             hf.create_dataset('mean_global', shape=(1,), maxshape=None)
             hf.create_dataset('std_dev_global', shape=(1,), maxshape=None)
 
-            pcen = extract_feature(audio_path, pcen_extractor, conf)
+            features = extract_feature(audio_path, raw_extractor, conf)
             print("Features extracted!")
-            mean = np.mean(pcen)
-            std = np.mean(pcen)
+            mean = np.mean(features)
+            std = np.mean(features)
             hf['mean_global'][:] = mean
             hf['std_dev_global'][:] = std
 
             print("Creating negative dataset")
-            fill_simple(hf, "feat_neg", pcen, seg_len_frames, hop_seg_frames)
+            fill_simple(hf, "feat_neg", features, seg_len_frames,
+                        hop_seg_frames)
             num_extract_eval += len(hf['feat_neg'])
 
             print("Creating Positive dataset")
@@ -361,7 +348,7 @@ def feature_transform(conf, mode):
                 'feat_pos', shape=(0, seg_len_frames, n_features),
                 maxshape=(None, seg_len_frames, n_features))
 
-            fill_complex(hf["feat_pos"], start_times, end_times, pcen,
+            fill_complex(hf["feat_pos"], start_times, end_times, features,
                          seg_len_frames, hop_seg_frames, support_indices)
 
             print("Creating query dataset")
@@ -372,8 +359,8 @@ def feature_transform(conf, mode):
             # would be great to avoid this, as query data is basically part of
             # the negative (all) data. However, the offset might be slightly
             # different and so far I have not been able to get this right.
-            fill_simple(hf, "feat_query", pcen, seg_len_frames, hop_seg_frames,
-                        start_index=start_index_query)
+            fill_simple(hf, "feat_query", features, seg_len_frames,
+                        hop_seg_frames, start_index=start_index_query)
 
             hf.close()
 

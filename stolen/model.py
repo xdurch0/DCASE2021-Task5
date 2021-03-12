@@ -88,6 +88,11 @@ class BaselineProtonet(tf.keras.Model):
                 tf.range(n_classes, dtype=tf.int32))[:kway]
             inputs_stacked = tf.gather(inputs_stacked, class_picks)
 
+            feature_shape = tf.shape(inputs_stacked)[-2:]
+            stacked_shape = tf.concat([[kway * (n_support + n_query)],
+                                       feature_shape], axis=0)
+            inputs_stacked = tf.reshape(inputs_stacked, stacked_shape)
+
             n_classes = kway
         else:
             inputs_stacked = tf.concat(data_batch, axis=0)

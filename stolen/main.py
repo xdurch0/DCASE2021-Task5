@@ -35,6 +35,7 @@ def train_protonet(train_dataset, val_dataset, conf):
 
     """
     model = create_baseline_model()
+    model.set_kway(conf.train.k_way)
 
     opt = tf.optimizers.Adam(conf.train.lr)
     loss_fn = tf.losses.SparseCategoricalCrossentropy(from_logits=True)

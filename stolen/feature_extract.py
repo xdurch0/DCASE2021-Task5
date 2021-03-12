@@ -53,6 +53,8 @@ def fill_simple(h5_file, name, features, seg_len, hop_len,
         (file_index + 1, seg_len, n_features))
     h5_dataset[file_index] = last_patch
 
+    print("   ...Extracted {} segments overall.".format(file_index + 1))
+
 
 def fill_complex(h5_dataset, start_times, end_times, features, seg_len, hop_len,
                  desired_indices=None, class_list=None):
@@ -121,15 +123,17 @@ def fill_complex(h5_dataset, start_times, end_times, features, seg_len, hop_len,
             label_list.append(label)
             file_index += 1
 
+    print("   ...Extracted {} segments so far.".format(file_index))
+
     return label_list
 
 
-def create_dataset(df_pos, features, glob_cls_name, hf, seg_len, hop_len,
-                   fps):
+def create_dataset(df_events, features, glob_cls_name, hf, seg_len, hop_len,
+                   fps, negative):
     """Split the data into segments and append to hdf5 dataset.
 
     Parameters:
-        df_pos: Pandas dataframe containing positive events.
+        df_events: Pandas dataframe containing events.
         features: Features for full audio file.
         glob_cls_name: Name of class used for audio files where only one class
                        is present.
@@ -138,20 +142,25 @@ def create_dataset(df_pos, features, glob_cls_name, hf, seg_len, hop_len,
         hop_len: How much to advance per segment if multiple segments are needed
                  to cover one event.
         fps: Frames per second.
+        negative: If True, we are processing negative events -- influences which
+                  class we assign.
 
     Returns:
         List of labels per extracted segment.
 
     """
-    start_times, end_times = time_2_frame(df_pos, fps)
+    start_times, end_times = time_2_frame(df_events, fps)
 
-    # For csv files with a column name Call, pick the global class name
-    if 'CALL' in df_pos.columns:
-        class_list = [glob_cls_name] * len(start_times)
+    if negative:
+        class_list = ["<NEGATIVE>"] * len(start_times)
     else:
-        class_list = [df_pos.columns[(df_pos == 'POS').loc[index]].values for
-                      index, row in df_pos.iterrows()]
-        class_list = list(chain.from_iterable(class_list))
+        # For csv files with a column name Call, pick the global class name
+        if 'CALL' in df_events.columns:
+            class_list = [glob_cls_name] * len(start_times)
+        else:
+            class_list = [df_events.columns[(df_events == 'POS').loc[index]].values for
+                          index, row in df_events.iterrows()]
+            class_list = list(chain.from_iterable(class_list))
 
     assert len(start_times) == len(end_times)
     assert len(class_list) == len(start_times)
@@ -286,9 +295,18 @@ def feature_transform(conf, mode):
             print("Features extracted!")
 
             df_pos = df[(df == 'POS').any(axis=1)]
+            df_neg = df[(df != 'POS').all(axis=1)]
             label_list = create_dataset(df_pos, pcen, glob_cls_name, hf,
-                                        seg_len_frames, hop_seg_frames, fps)
+                                        seg_len_frames, hop_seg_frames, fps,
+                                        False)
             labels_train.append(label_list)
+            print("Positive events added...")
+
+            label_list = create_dataset(df_neg, pcen, glob_cls_name, hf,
+                                        seg_len_frames, hop_seg_frames, fps,
+                                        True)
+            labels_train.append(label_list)
+            print("Negative events added...")
 
         print(" Feature extraction for training set complete")
         num_extract = len(hf['features'])

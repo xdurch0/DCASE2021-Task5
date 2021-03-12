@@ -91,11 +91,10 @@ def main(conf: DictConfig):
         print(" --Feature Extraction Stage--")
         n_extract_train, data_shape = feature_transform(conf=conf, mode="train")
         print("Shape of dataset is {}".format(data_shape))
-        print("Total training samples is {}".format(n_extract_train))
+        print("Total number of training samples: {}".format(n_extract_train))
 
         n_extract_eval = feature_transform(conf=conf, mode='eval')
-        print("Total number of samples used for evaluation: "
-              "{}".format(n_extract_eval))
+        print("Total number of evaluation samples: {}".format(n_extract_eval))
         print(" --Feature Extraction Complete--")
 
     if conf.set.train:

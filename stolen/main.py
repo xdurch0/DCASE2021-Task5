@@ -55,7 +55,7 @@ def train_protonet(train_dataset, val_dataset, conf):
 
     # TODO don't hardcode
     # TODO use validation set only once.........
-    oversampled_size = 110485
+    oversampled_size = 8578 * 20  # no NEG: 5815*19
     steps_per_epoch = (int(oversampled_size*0.75) //
                        (2*conf.train.n_shot * conf.train.k_way))
     val_steps = (int(oversampled_size*0.25) //
@@ -79,15 +79,14 @@ def main(conf: DictConfig):
         conf: config as produced by hydra via YAML file.
 
     """
-
-    if not os.path.isdir(conf.path.feat_path):
-        os.makedirs(conf.path.feat_path)
-    if not os.path.isdir(conf.path.feat_train):
-        os.makedirs(conf.path.feat_train)
-    if not os.path.isdir(conf.path.feat_eval):
-        os.makedirs(conf.path.feat_eval)
-
     if conf.set.features:
+        if not os.path.isdir(conf.path.feat_path):
+            os.makedirs(conf.path.feat_path)
+        if not os.path.isdir(conf.path.feat_train):
+            os.makedirs(conf.path.feat_train)
+        if not os.path.isdir(conf.path.feat_eval):
+            os.makedirs(conf.path.feat_eval)
+
         print(" --Feature Extraction Stage--")
         n_extract_train, data_shape = feature_transform(conf=conf, mode="train")
         print("Shape of dataset is {}".format(data_shape))
@@ -106,9 +105,13 @@ def main(conf: DictConfig):
         train_protonet(train_dataset, val_dataset, conf)
 
     if conf.set.eval:
-        name_arr = np.array([])
-        onset_arr = np.array([])
-        offset_arr = np.array([])
+        if not os.path.isdir(conf.path.results):
+            os.makedirs(conf.path.results)
+
+        thresholds = np.linspace(0., 1., 101)
+        name_dict = {t: np.array([]) for t in thresholds}
+        onset_dict = {t: np.array([]) for t in thresholds}
+        offset_dict = {t: np.array([]) for t in thresholds}
         all_feat_files = [file for file in glob(os.path.join(
             conf.path.feat_eval, '*.h5'))]
 
@@ -120,19 +123,24 @@ def main(conf: DictConfig):
 
             hdf_eval = h5py.File(feat_file, 'r')
             start_index_query = hdf_eval['start_index_query'][()][0]
-            onset, offset = evaluate_prototypes(
-                conf, hdf_eval, start_index_query)
 
-            name = np.repeat(audio_name, len(onset))
-            name_arr = np.append(name_arr, name)
-            onset_arr = np.append(onset_arr, onset)
-            offset_arr = np.append(offset_arr, offset)
+            on_off_sets = evaluate_prototypes(conf, hdf_eval, start_index_query,
+                                              thresholds)
 
-        df_out = pd.DataFrame({'Audiofilename': name_arr,
-                               'Starttime': onset_arr,
-                               'Endtime': offset_arr})
-        csv_path = os.path.join(conf.path.root_dir, 'Eval_out.csv')
-        df_out.to_csv(csv_path, index=False)
+            for thresh, (onset, offset) in on_off_sets.items():
+                name = np.repeat(audio_name, len(onset))
+                name_dict[thresh] = np.append(name_dict[thresh], name)
+                onset_dict[thresh] = np.append(onset_dict[thresh], onset)
+                offset_dict[thresh] = np.append(offset_dict[thresh], offset)
+
+        print("Writing {} files...".format(len(thresholdse)))
+        for thresh in thresholds:
+            df_out = pd.DataFrame({'Audiofilename': name_dict[thresh],
+                                   'Starttime': onset_dict[thresh],
+                                   'Endtime': offset_dict[thresh]})
+            csv_path = os.path.join(conf.path.results,
+                                    'Eval_out_{}.csv'.format(thresh))
+            df_out.to_csv(csv_path, index=False)
 
 
 if __name__ == '__main__':

@@ -13,6 +13,7 @@ path:
   Model: ${path.root_dir}/Model
   best_model: ${path.Model}/best_model.h5
   last_model: ${path.Model}/last_model.h5
+  results: ${path.root_dir}/Results
 
 features:
   seg_len: 0.200
@@ -28,7 +29,6 @@ train:
   num_classes: 15
   n_shot: 5
   k_way : 10
-  device: cuda
   lr: 0.0001
   scheduler_gamma: 0.5
   patience: 3
@@ -39,5 +39,3 @@ eval:
   iterations: 5
   query_batch_size: 8
   negative_set_batch_size : 16
-
-

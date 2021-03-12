@@ -1,7 +1,7 @@
 """Functions for evaluating trained models.
 
 """
-from typing import Union, Tuple
+from typing import Union, Tuple, Iterable
 
 import h5py
 import numpy as np
@@ -41,7 +41,7 @@ def get_probability(positive_prototype: Union[tf.Tensor, np.array],
 def evaluate_prototypes(conf: DictConfig,
                         hdf_eval: h5py.File,
                         start_index_query: int,
-                        threshold: float = 0.5) -> Tuple[np.array, np.array]:
+                        thresholds: Iterable) -> dict:
     """Run the evaluation for a single dataset.
 
     Parameters:
@@ -50,8 +50,7 @@ def evaluate_prototypes(conf: DictConfig,
                   features.
         start_index_query: Start frame of the query set with respect to the full
                           file (i.e. negative set).
-        threshold: Threshold above which an output probability is
-                   regarded as positive.
+        thresholds: 1D container with all "positive" thresholds to try.
 
     Returns:
         onset: 1d numpy array of predicted onset times.
@@ -98,25 +97,30 @@ def evaluate_prototypes(conf: DictConfig,
         probs_per_iter.append(prob_pos_iter)
     prob_final = np.mean(np.array(probs_per_iter), axis=0)
 
+    print("Ok, trying {} thresholds...".format(len(thresholds)))
     krn = np.array([1, -1])
-    prob_thresh = np.where(prob_final > threshold, 1, 0)
+    on_off_sets = dict()
+    for threshold in thresholds:
+        prob_thresh = np.where(prob_final > threshold, 1, 0)
 
-    # prob_pos_final = prob_final * prob_thresh
-    changes = np.convolve(krn, prob_thresh)
+        # prob_pos_final = prob_final * prob_thresh
+        changes = np.convolve(krn, prob_thresh)
 
-    onset_frames = np.where(changes == 1)[0]
-    offset_frames = np.where(changes == -1)[0]
+        onset_frames = np.where(changes == 1)[0]
+        offset_frames = np.where(changes == -1)[0]
 
-    str_time_query = (start_index_query * conf.features.hop_mel /
-                      conf.features.sr)
+        str_time_query = (start_index_query * conf.features.hop_mel /
+                          conf.features.sr)
 
-    onset = ((onset_frames + 1) * hop_seg * conf.features.hop_mel /
-             conf.features.sr)
-    onset = onset + str_time_query
+        onset = ((onset_frames + 1) * hop_seg * conf.features.hop_mel /
+                 conf.features.sr)
+        onset = onset + str_time_query
 
-    offset = ((offset_frames + 1) * hop_seg * conf.features.hop_mel /
-              conf.features.sr)
-    offset = offset + str_time_query
+        offset = ((offset_frames + 1) * hop_seg * conf.features.hop_mel /
+                  conf.features.sr)
+        offset = offset + str_time_query
 
-    assert len(onset) == len(offset)
-    return onset, offset
+        assert len(onset) == len(offset)
+        on_off_sets[threshold] = (onset, offset)
+
+    return on_off_sets

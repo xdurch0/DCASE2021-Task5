@@ -302,6 +302,7 @@ def feature_transform(conf, mode):
             labels_train.append(label_list)
             print("Positive events added...")
 
+            # use of this is highly questionable!
             label_list = create_dataset(df_neg, pcen, glob_cls_name, hf,
                                         seg_len_frames, hop_seg_frames, fps,
                                         True)

@@ -108,7 +108,7 @@ def main(conf: DictConfig):
         if not os.path.isdir(conf.path.results):
             os.makedirs(conf.path.results)
 
-        thresholds = np.linspace(0., 1., 101)
+        thresholds = np.around(np.linspace(0., 1., 101), decimals=2)
         name_dict = {t: np.array([]) for t in thresholds}
         onset_dict = {t: np.array([]) for t in thresholds}
         offset_dict = {t: np.array([]) for t in thresholds}
@@ -133,7 +133,7 @@ def main(conf: DictConfig):
                 onset_dict[thresh] = np.append(onset_dict[thresh], onset)
                 offset_dict[thresh] = np.append(offset_dict[thresh], offset)
 
-        print("Writing {} files...".format(len(thresholdse)))
+        print("Writing {} files...".format(len(thresholds)))
         for thresh in thresholds:
             df_out = pd.DataFrame({'Audiofilename': name_dict[thresh],
                                    'Starttime': onset_dict[thresh],

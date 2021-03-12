@@ -186,7 +186,8 @@ class FeatureExtractor:
                                                   hop_length=self.hop,
                                                   n_mels=self.n_mels,
                                                   fmax=self.fmax)
-        pcen = librosa.core.pcen(mel_spec, sr=self.sr)
+        #pcen = librosa.core.pcen(mel_spec, sr=self.sr)
+        pcen = np.log(mel_spec + 1e-8)
         pcen = pcen.astype(np.float32)
 
         return pcen

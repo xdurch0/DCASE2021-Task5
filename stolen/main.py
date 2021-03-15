@@ -13,7 +13,7 @@ from omegaconf import DictConfig
 
 from dataset import tf_dataset
 from evaluate import evaluate_prototypes
-from feature_extract import feature_transform
+from feature_extract import feature_transform, resample_all
 from model import create_baseline_model
 
 
@@ -35,7 +35,7 @@ def train_protonet(train_dataset, val_dataset, conf):
 
     """
     model = create_baseline_model(conf)
-    model.set_kway(conf.train.k_way)
+    model.set_k_way(conf.train.k_way)
 
     opt = tf.optimizers.Adam(conf.train.lr)
     loss_fn = tf.losses.SparseCategoricalCrossentropy(from_logits=True)
@@ -79,22 +79,29 @@ def main(conf: DictConfig):
         conf: config as produced by hydra via YAML file.
 
     """
-    if conf.set.features:
+    if conf.set.resample:
+        resample_all(conf)
+
+    if conf.set.features_train:
         if not os.path.isdir(conf.path.feat_path):
             os.makedirs(conf.path.feat_path)
         if not os.path.isdir(conf.path.feat_train):
             os.makedirs(conf.path.feat_train)
-        if not os.path.isdir(conf.path.feat_eval):
-            os.makedirs(conf.path.feat_eval)
 
-        print(" --Feature Extraction Stage--")
+        print("--Extracting training features--")
         n_extract_train, data_shape = feature_transform(conf=conf, mode="train")
         print("Shape of dataset is {}".format(data_shape))
         print("Total number of training samples: {}".format(n_extract_train))
+        print("Done!")
 
+    if conf.set.features_eval:
+        if not os.path.isdir(conf.path.feat_eval):
+            os.makedirs(conf.path.feat_eval)
+
+        print("--Extracting evaluation features--")
         n_extract_eval = feature_transform(conf=conf, mode='eval')
         print("Total number of evaluation samples: {}".format(n_extract_eval))
-        print(" --Feature Extraction Complete--")
+        print("Done!")
 
     if conf.set.train:
         if not os.path.isdir(conf.path.Model):

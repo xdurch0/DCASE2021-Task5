@@ -2,13 +2,14 @@
 
 """
 import os
+from glob import glob
 from itertools import chain
 
 import h5py
 import librosa
 import numpy as np
 import pandas as pd
-from glob import glob
+from scipy.io import wavfile
 
 pd.options.mode.chained_assignment = None
 
@@ -193,10 +194,30 @@ def extract_feature(audio_path, feature_extractor, conf):
         Features in shape time x features.
 
     """
-    y, _ = librosa.load(audio_path, sr=conf.features.sr)
+    y, sr = librosa.load(audio_path, sr=None)
+    if sr != conf.features.sr:
+        raise ValueError("Audio should have been resampled at this stage. Found"
+                         "{}Hz, expected {}Hz.".format(sr, conf.features.sr))
 
     y = feature_extractor.extract_feature(y)
     return y
+
+
+def resample_audio(audio_path, conf):
+    y, _ = librosa.load(audio_path, sr=conf.features.sr)
+    wavfile.write(audio_path[:-4] + "_{}hz.wav".format(conf.features.sr),
+                  conf.features.sr, y)
+
+
+def resample_all(conf):
+    meta_path = conf.path.root_dir
+    all_files = [file
+                 for path_dir, subdir, files in os.walk(meta_path)
+                 for file in glob(os.path.join(path_dir, "*.wav"))]
+
+    for file in all_files:
+        print("Resampling file {}".format(file))
+        resample_audio(file, conf)
 
 
 def time_2_frame(df, fps):
@@ -276,7 +297,8 @@ def feature_transform(conf, mode):
             split_list = file.split('/')
             glob_cls_name = split_list[split_list.index('Training_Set') + 1]
             df = pd.read_csv(file, header=0, index_col=False)
-            audio_path = file.replace('csv', 'wav')
+            audio_path = file.replace('.csv',
+                                      '_{}hz.wav'.format(conf.features.sr))
             print("Processing file name {}".format(audio_path))
             features = extract_feature(audio_path, raw_extractor, conf)
             print("Features extracted!")
@@ -317,7 +339,8 @@ def feature_transform(conf, mode):
             split_list = file.split('/')
             name = split_list[-1].split('.')[0]
             feat_name = name + '.h5'
-            audio_path = file.replace('csv', 'wav')
+            audio_path = file.replace('.csv',
+                                      '_{}hz.wav'.format(conf.features.sr))
 
             print("Processing file name {}".format(audio_path))
             hdf_eval = os.path.join(conf.path.feat_eval, feat_name)

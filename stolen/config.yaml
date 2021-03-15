@@ -1,5 +1,7 @@
 set:
-  features: false
+  resample: false
+  features_train: false
+  features_eval: false
   train: false
   eval: false
 
@@ -33,6 +35,9 @@ train:
   scheduler_gamma: 0.5
   patience: 3
   epochs: 100
+model:
+  dims: 2
+  preprocess: mel
 
 eval:
   samples_neg: 650

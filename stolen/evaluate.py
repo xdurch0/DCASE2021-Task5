@@ -54,6 +54,8 @@ def evaluate_prototypes(conf: DictConfig,
 
     """
     hop_seg_samples = int(conf.features.hop_seg * conf.features.sr)
+    start_index_query = hdf_eval['start_index_query'][()][0]
+    start_time_query = start_index_query / conf.features.sr
 
     x_pos, x_neg, x_query = dataset_eval(hdf_eval, conf)
 
@@ -103,9 +105,6 @@ def evaluate_prototypes(conf: DictConfig,
 
         onset_frames = np.where(changes == 1)[0]
         offset_frames = np.where(changes == -1)[0]
-
-        start_index_query = hdf_eval['start_index_query'][()][0]
-        start_time_query = start_index_query / conf.features.sr
 
         onset_times = (onset_frames + 1) * hop_seg_samples / conf.features.sr
         onset_times = onset_times + start_time_query

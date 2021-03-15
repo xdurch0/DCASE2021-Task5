@@ -22,10 +22,11 @@ class LogMel(tfkl.Layer):
         to_mel = librosa.filters.mel(sr, n_fft).T
 
         self.mel_matrix = tf.Variable(initial_value=to_mel,
-                                      trainable=self.trainable)
+                                      trainable=self.trainable,
+                                      name=self.name + "_weights")
         self.compression = tf.Variable(
             initial_value=tf.constant(1, dtype=tf.float32),
-            trainable=self.trainable)
+            trainable=self.trainable, name=self.name + "_compression")
 
     def call(self, inputs: tf.Tensor, training: bool = False) -> tf.Tensor:
         if self.pad:
@@ -41,20 +42,21 @@ class LogMel(tfkl.Layer):
         return logmel
 
 
-def baseline_block(inp: tf.Tensor) -> tf.Tensor:
+def baseline_block(inp: tf.Tensor, scope: str = "") -> tf.Tensor:
     """Calculate a simple convolution block.
 
     Parameters:
         inp: The input to the block.
+        scope: String to append to component names.
 
     Returns:
         pool: Result of max pooling.
 
     """
-    conv = tfkl.Conv2D(128, 3, padding="same")(inp)
-    bn = tfkl.BatchNormalization()(conv)
-    activation = tfkl.ReLU()(bn)
-    pool = tfkl.MaxPool2D(2, padding="same")(activation)
+    conv = tfkl.Conv2D(128, 3, padding="same", name=scope + "_conv")(inp)
+    bn = tfkl.BatchNormalization(name=scope + "_bn")(conv)
+    activation = tfkl.ReLU(name=scope + "_relu")(bn)
+    pool = tfkl.MaxPool2D(2, padding="same", name=scope + "_pool")(activation)
     return pool
 
 
@@ -67,15 +69,15 @@ def create_baseline_model(conf) -> tf.keras.Model:
     """
     inp = tf.keras.Input(shape=(None, 1))
     spectro = LogMel(conf.features.n_fft, conf.features.hop_mel,
-                     conf.features.sr, trainable=False)(inp)
+                     conf.features.sr, trainable=False, name="logmel")(inp)
     inp_channel = tfkl.Reshape((-1, 128, 1))(spectro)
-    b1 = baseline_block(inp_channel)
-    b2 = baseline_block(b1)
-    b3 = baseline_block(b2)
-    b4 = baseline_block(b3)
-    flat = tfkl.Flatten()(b4)
+    b1 = baseline_block(inp_channel, scope="block1")
+    b2 = baseline_block(b1, scope="block2")
+    b3 = baseline_block(b2, scope="block3")
+    b4 = baseline_block(b3, scope="block4")
+    flat = tfkl.Flatten(name="flatten")(b4)
 
-    model = BaselineProtonet(inp, flat)
+    model = BaselineProtonet(inp, flat, name="protonet")
     return model
 
 

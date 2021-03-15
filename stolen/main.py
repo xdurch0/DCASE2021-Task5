@@ -34,7 +34,7 @@ def train_protonet(train_dataset, val_dataset, conf):
         history: history object obtained by keras.fit.
 
     """
-    model = create_baseline_model()
+    model = create_baseline_model(conf)
     model.set_kway(conf.train.k_way)
 
     opt = tf.optimizers.Adam(conf.train.lr)

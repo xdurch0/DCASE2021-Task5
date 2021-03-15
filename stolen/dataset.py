@@ -74,13 +74,10 @@ def tf_dataset(conf):
 
     """
     x_train, x_test, y_train, y_test, mean, std = split_train_data(conf)
-    x_train = feature_scale(x_train, mean, std)
-    x_test = feature_scale(x_test, mean, std)
 
     # batch_size should be support_size + query_size
     # right now, for simplicity, we choose both the same size
     # it will be number of examples *per class*!!
-    # TODO implement the n-way thing where we only take a subset of classes
     batch_size = 2*conf.train.n_shot
 
     return (per_class_dataset(x_train, y_train, batch_size),
@@ -98,16 +95,10 @@ def dataset_eval(hf, conf):
         Positive, negative and query evaluation sets.
 
     """
-    x_train, x_test, y_train, y_test, mean, std = split_train_data(conf)
-
     x_pos = hf['feat_pos'][()]
     x_neg = hf['feat_neg'][()]
     x_query = hf["feat_query"][()]
     hf.close()
-
-    x_pos = feature_scale(x_pos, mean, std)
-    x_neg = feature_scale(x_neg, mean, std)
-    x_query = feature_scale(x_query, mean, std)
 
     return x_pos, x_neg, x_query
 

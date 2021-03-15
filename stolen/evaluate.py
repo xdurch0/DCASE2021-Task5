@@ -1,7 +1,7 @@
 """Functions for evaluating trained models.
 
 """
-from typing import Union, Tuple, Iterable
+from typing import Union, Sequence
 
 import h5py
 import numpy as np
@@ -41,7 +41,7 @@ def get_probability(positive_prototype: Union[tf.Tensor, np.array],
 def evaluate_prototypes(conf: DictConfig,
                         hdf_eval: h5py.File,
                         start_index_query: int,
-                        thresholds: Iterable) -> dict:
+                        thresholds: Sequence) -> dict:
     """Run the evaluation for a single dataset.
 
     Parameters:
@@ -65,7 +65,7 @@ def evaluate_prototypes(conf: DictConfig,
     dataset_query = tf.data.Dataset.from_tensor_slices(x_query)
     dataset_query = dataset_query.batch(conf.eval.query_batch_size)
 
-    model = create_baseline_model()
+    model = create_baseline_model(conf)
     model.load_weights(conf.path.best_model)
 
     positive_embeddings = model(x_pos)

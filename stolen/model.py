@@ -3,8 +3,42 @@
 """
 from typing import Tuple, Union
 
+import librosa
 import tensorflow as tf
 tfkl = tf.keras.layers
+
+
+class LogMel(tfkl.Layer):
+    def __init__(self, n_fft: int, hop_len: int, sr: int, pad: bool = True,
+                 **kwargs):
+        super().__init__(**kwargs)
+        self.n_fft = n_fft
+        self.hop_len = hop_len
+        self.pad = pad
+
+        # to_mel = tf.signal.linear_to_mel_weight_matrix(
+        #    num_mel_bins=128, num_spectrogram_bins=self.n_fft//2 + 1,
+        #    sample_rate=22050, lower_edge_hertz=0, upper_edge_hertz=22050//2)
+        to_mel = librosa.filters.mel(sr, n_fft).T
+
+        self.mel_matrix = tf.Variable(initial_value=to_mel,
+                                      trainable=self.trainable)
+        self.compression = tf.Variable(
+            initial_value=tf.constant(1, dtype=tf.float32),
+            trainable=self.trainable)
+
+    def call(self, inputs: tf.Tensor, training: bool = False) -> tf.Tensor:
+        if self.pad:
+            inputs = tf.pad(inputs, (
+            (0, 0), (self.n_fft // 2, self.n_fft // 2), (0, 0)), mode="reflect")
+
+        spectros = tf.signal.stft(inputs[:, :, 0], self.n_fft, self.hop_len)
+        power = tf.abs(spectros) ** 2
+
+        mel = tf.matmul(power, self.mel_matrix)
+        logmel = tf.math.log(mel + self.compression)
+
+        return logmel
 
 
 def baseline_block(inp: tf.Tensor) -> tf.Tensor:
@@ -24,15 +58,17 @@ def baseline_block(inp: tf.Tensor) -> tf.Tensor:
     return pool
 
 
-def create_baseline_model() -> tf.keras.Model:
-    """Create a simple model structure for the Protypical Network.
+def create_baseline_model(conf) -> tf.keras.Model:
+    """Create a simple model structure for the Prototypical Network.
 
     Returns:
         The built model.
 
     """
-    inp = tf.keras.Input(shape=(17, 128))
-    inp_channel = tfkl.Reshape((17, 128, 1))(inp)
+    inp = tf.keras.Input(shape=(None, 1))
+    spectro = LogMel(conf.features.n_fft, conf.features.hop_mel,
+                     conf.features.sr, trainable=False)(inp)
+    inp_channel = tfkl.Reshape((-1, 128, 1))(spectro)
     b1 = baseline_block(inp_channel)
     b2 = baseline_block(b1)
     b3 = baseline_block(b2)

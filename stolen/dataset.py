@@ -8,6 +8,8 @@ import numpy as np
 import tensorflow as tf
 from sklearn.model_selection import train_test_split
 
+AUTOTUNE = tf.data.experimental.AUTOTUNE
+
 # rough idea
 # - split dataset into "shards" according to classes. one set per class.
 # - create one dataset per class. shuffle and repeat each indefinitely and zip.
@@ -56,11 +58,11 @@ def per_class_dataset(x, y, batch_size):
     for class_ind in range(n_classes):
         x_class = x[y == class_ind]
         class_data = tf.data.Dataset.from_tensor_slices(x_class)
-        class_data = class_data.repeat()
+        class_data = class_data.shuffle(len(x_class)).repeat()
         datasets.append(class_data)
 
     # may be able to do this with interleave once I understand how it works lol
-    return tf.data.Dataset.zip(tuple(datasets)).batch(batch_size)
+    return tf.data.Dataset.zip(tuple(datasets)).batch(batch_size).prefetch(AUTOTUNE)
 
 
 def tf_dataset(conf):

@@ -28,7 +28,6 @@ features:
   n_mels: 128
   hop_mel: 256
 train:
-  num_classes: 15
   n_shot: 5
   k_way : 10
   lr: 0.0001

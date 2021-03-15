@@ -40,7 +40,6 @@ def get_probability(positive_prototype: Union[tf.Tensor, np.array],
 
 def evaluate_prototypes(conf: DictConfig,
                         hdf_eval: h5py.File,
-                        start_index_query: int,
                         thresholds: Sequence) -> dict:
     """Run the evaluation for a single dataset.
 
@@ -48,17 +47,13 @@ def evaluate_prototypes(conf: DictConfig,
         conf: hydra config object.
         hdf_eval: Open hd5 file containing positive, negative and query
                   features.
-        start_index_query: Start frame of the query set with respect to the full
-                          file (i.e. negative set).
         thresholds: 1D container with all "positive" thresholds to try.
 
     Returns:
-        onset: 1d numpy array of predicted onset times.
-        offset: 1d numpy array of predicted "offset" (i.e. end-of-event) times.
+        dict mapping thresholds to onsets and offsets of events.
 
     """
-    hop_seg = int(conf.features.hop_seg * conf.features.sr //
-                  conf.features.hop_mel)
+    hop_seg_samples = int(conf.features.hop_seg * conf.features.sr)
 
     x_pos, x_neg, x_query = dataset_eval(hdf_eval, conf)
 
@@ -98,29 +93,27 @@ def evaluate_prototypes(conf: DictConfig,
     prob_final = np.mean(np.array(probs_per_iter), axis=0)
 
     print("Ok, trying {} thresholds...".format(len(thresholds)))
-    krn = np.array([1, -1])
+    change_kernel = np.array([1, -1])
     on_off_sets = dict()
     for threshold in thresholds:
         prob_thresh = np.where(prob_final > threshold, 1, 0)
 
         # prob_pos_final = prob_final * prob_thresh
-        changes = np.convolve(krn, prob_thresh)
+        changes = np.convolve(change_kernel, prob_thresh)
 
         onset_frames = np.where(changes == 1)[0]
         offset_frames = np.where(changes == -1)[0]
 
-        str_time_query = (start_index_query * conf.features.hop_mel /
-                          conf.features.sr)
+        start_index_query = hdf_eval['start_index_query'][()][0]
+        start_time_query = start_index_query / conf.features.sr
 
-        onset = ((onset_frames + 1) * hop_seg * conf.features.hop_mel /
-                 conf.features.sr)
-        onset = onset + str_time_query
+        onset_times = (onset_frames + 1) * hop_seg_samples / conf.features.sr
+        onset_times = onset_times + start_time_query
 
-        offset = ((offset_frames + 1) * hop_seg * conf.features.hop_mel /
-                  conf.features.sr)
-        offset = offset + str_time_query
+        offset_times = (offset_frames + 1) * hop_seg_samples / conf.features.sr
+        offset_times = offset_times + start_time_query
 
-        assert len(onset) == len(offset)
-        on_off_sets[threshold] = (onset, offset)
+        assert len(onset_times) == len(offset_times)
+        on_off_sets[threshold] = (onset_times, offset_times)
 
     return on_off_sets

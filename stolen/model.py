@@ -252,7 +252,7 @@ def create_baseline_model(conf) -> tf.keras.Model:
     b4 = baseline_block(b3, 128, dims, scope="block4")
     flat = tfkl.Flatten(name="flatten")(b4)
 
-    model = BaselineProtonet(inp, flat, conf.train.n_support,
+    model = BaselineProtonet(inp, flat, conf.train.n_shot,
                              conf.train.n_query, conf.train.k_way,
                              name="protonet")
     return model

@@ -8,8 +8,8 @@ import numpy as np
 import tensorflow as tf
 from omegaconf import DictConfig
 
-from dataset import dataset_eval
-from model import create_baseline_model
+from .dataset import dataset_eval
+from .model import create_baseline_model
 
 
 def get_probability(positive_prototype: Union[tf.Tensor, np.array],

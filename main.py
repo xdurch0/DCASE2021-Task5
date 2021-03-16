@@ -11,10 +11,10 @@ import pandas as pd
 import tensorflow as tf
 from omegaconf import DictConfig
 
-from dataset import tf_dataset
-from evaluate import evaluate_prototypes
-from feature_extract import feature_transform, resample_all
-from model import create_baseline_model
+from stolen.dataset import tf_dataset
+from stolen.evaluate import evaluate_prototypes
+from stolen.feature_extract import feature_transform, resample_all
+from stolen.model import create_baseline_model
 
 
 def train_protonet(train_dataset, val_dataset, conf):

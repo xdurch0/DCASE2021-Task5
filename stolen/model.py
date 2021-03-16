@@ -6,13 +6,18 @@ from typing import Tuple, Union, Optional
 import librosa
 import numpy as np
 import tensorflow as tf
+
 tfkl = tf.keras.layers
 
 
 class LogMel(tfkl.Layer):
     """Compute Mel spectrograms and apply logarithmic compression."""
 
-    def __init__(self, n_fft: int, hop_len: int, sr: int, pad: bool = True,
+    def __init__(self,
+                 n_fft: int,
+                 hop_len: int,
+                 sr: int,
+                 pad: bool = True,
                  **kwargs):
         """Prepare variables for conversion.
 
@@ -68,8 +73,13 @@ class LogMel(tfkl.Layer):
 class SincConv(tfkl.Layer):
     """SincNet layer."""
 
-    def __init__(self, filters: int, kernel_size: int, strides: int,
-                 padding: str, normalize: bool = True, mel_init: bool = True,
+    def __init__(self,
+                 filters: int,
+                 kernel_size: int,
+                 strides: int,
+                 padding: str,
+                 normalize: bool = True,
+                 mel_init: bool = True,
                  **kwargs):
         """Set up parameters for the sinc layer.
 
@@ -179,7 +189,9 @@ class SincConv(tfkl.Layer):
         return bandpass
 
 
-def baseline_block(inp: tf.Tensor, filters: int, dims: int,
+def baseline_block(inp: tf.Tensor,
+                   filters: int,
+                   dims: int,
                    scope: str = "") -> tf.Tensor:
     """Calculate a simple convolution block.
 
@@ -257,8 +269,12 @@ class BaselineProtonet(tf.keras.Model):
     between this distribution and the true classes is used as a loss function.
 
     """
-    def __init__(self, inputs: tf.Tensor, outputs: tf.Tensor,
-                 n_support: int, n_query: int, k_way: Optional[int] = None,
+    def __init__(self,
+                 inputs: tf.Tensor,
+                 outputs: tf.Tensor,
+                 n_support: int,
+                 n_query: int,
+                 k_way: Optional[int] = None,
                  **kwargs):
         """Thin wrapper around the Functional __init__.
 
@@ -276,7 +292,8 @@ class BaselineProtonet(tf.keras.Model):
         self.n_support = n_support
         self.n_query = n_query
 
-    def process_batch_input(self, data_batch: tuple,
+    def process_batch_input(self,
+                            data_batch: tuple,
                             k_way: Union[int, None] = None) -> Tuple[tf.Tensor,
                                                                      int]:
         """Stack zipped data batches into a single one.
@@ -313,7 +330,8 @@ class BaselineProtonet(tf.keras.Model):
 
         return inputs_stacked, n_classes
 
-    def proto_compute_loss(self, inputs_stacked: tf.Tensor,
+    def proto_compute_loss(self,
+                           inputs_stacked: tf.Tensor,
                            n_classes: Union[int, tf.Tensor],
                            training: bool = False) -> Tuple[tf.Tensor,
                                                             tf.Tensor,

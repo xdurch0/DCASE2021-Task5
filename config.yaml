@@ -9,7 +9,7 @@ path:
   root_dir:  /project/jens/DCASE2021-Task5/Development_Set
   train_dir: ${path.root_dir}/Training_Set
   eval_dir:  ${path.root_dir}/Validation_Set
-  feat_path: ${path.root_dir}/FeaturesRaw
+  feat_path: ${path.root_dir}/Features_${features.type}
   feat_train: ${path.feat_path}/feat_train
   feat_eval:  ${path.feat_path}/feat_eval
   Model: ${path.root_dir}/Model
@@ -18,20 +18,20 @@ path:
   results: ${path.root_dir}/Results
 
 features:
+  type: raw
   seg_len: 0.200
   hop_seg: 0.050
   eps: 2.220446049250313e-16
   fmax: 11025
-  fmin: 50
   sr: 22050
   n_fft: 1024
   n_mels: 128
   hop_mel: 256
 train:
   n_shot: 5
-  n_query: 5
+  n_query: 55
   k_way : 10
-  lr: 0.0001
+  lr: 0.001
   scheduler_gamma: 0.5
   patience: 3
   epochs: 100
@@ -41,6 +41,6 @@ model:
 
 eval:
   samples_neg: 650
-  iterations: 5
-  query_batch_size: 8
-  negative_set_batch_size : 16
+  iterations: 25
+  query_batch_size: 256
+  negative_set_batch_size : 256

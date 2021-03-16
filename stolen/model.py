@@ -51,20 +51,24 @@ def create_baseline_model(conf) -> tf.keras.Model:
     if dims not in [1, 2]:
         raise ValueError("Model only understands dims of 1 or 2.")
 
-    inp = tf.keras.Input(shape=(None, 1))
-    if conf.model.preprocess == "mel":
-        preprocessed = LogMel(conf.features.n_fft, conf.features.hop_mel,
-                              conf.features.sr, trainable=False,
-                              name="logmel")(inp)
-    elif conf.model.preprocess == "sinc":
-        preprocessed = SincConv(conf.features.n_mels, conf.features.n_fft,
-                                conf.features.hop_mel, "same",
-                                name="sinc")(inp)
+    if conf.features.type == "raw":
+        inp = tf.keras.Input(shape=(None, 1))
+        if conf.model.preprocess == "mel":
+            preprocessed = LogMel(conf.features.n_fft, conf.features.hop_mel,
+                                  conf.features.sr, trainable=False,
+                                  name="logmel")(inp)
+        elif conf.model.preprocess == "sinc":
+            preprocessed = SincConv(conf.features.n_mels, conf.features.n_fft,
+                                    conf.features.hop_mel, "same",
+                                    name="sinc")(inp)
+        else:
+            raise ValueError("Invalid preprocessing specified.")
     else:
-        raise ValueError("Invalid preprocessing specified.")
+        inp = tf.keras.Input(shape=(None, conf.features.n_mels))
+        preprocessed = inp
 
     if dims == 2:
-        preprocessed = tfkl.Reshape((-1, 128, 1),
+        preprocessed = tfkl.Reshape((-1, conf.features.n_mels, 1),
                                     name="add_channels")(preprocessed)
 
     preprocessed = tfkl.BatchNormalization(name="input_norm")(preprocessed)

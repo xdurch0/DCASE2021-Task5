@@ -172,14 +172,40 @@ def create_dataset(df_events, features, glob_cls_name, hf, seg_len, hop_len,
     return label_list
 
 
-class FeatureExtractor:
-
+class RawExtractor:
     def __init__(self):
         pass
 
     @staticmethod
     def extract_feature(audio):
         return audio[:, None].astype(np.float32)
+
+
+class FeatureExtractor:
+    def __init__(self, conf):
+        self.sr = conf.features.sr
+        self.n_fft = conf.features.n_fft
+        self.hop = conf.features.hop_mel
+        self.n_mels = conf.features.n_mels
+        self.fmax = conf.features.fmax
+        self.type = conf.features.type
+
+    def extract_feature(self, audio):
+        mel_spec = librosa.feature.melspectrogram(audio, sr=self.sr,
+                                                  n_fft=self.n_fft,
+                                                  hop_length=self.hop,
+                                                  n_mels=self.n_mels,
+                                                  fmax=self.fmax)
+        if self.type == "pcen":
+            features = librosa.core.pcen(mel_spec, sr=self.sr)
+        elif self.type == "logmel":
+            features = np.log(mel_spec + 1e-8)
+        else:
+            raise ValueError("Invalid type {} in "
+                             "FeatureExtractor".format(self.type))
+        features = features.astype(np.float32)
+
+        return features
 
 
 def extract_feature(audio_path, feature_extractor, conf):
@@ -271,10 +297,15 @@ def feature_transform(conf, mode):
 
     """
     labels_train = []
-    raw_extractor = FeatureExtractor()
 
-    fps = conf.features.sr
-    n_features = 1
+    if conf.features.type == "raw":
+        fps = conf.features.sr
+        n_features = 1
+        feature_extractor = RawExtractor()
+    else:
+        fps = conf.features.sr / conf.features.hop_mel
+        n_features = conf.features.n_mels
+        feature_extractor = FeatureExtractor(conf)
 
     seg_len_frames = int(round(conf.features.seg_len * fps))
     hop_seg_frames = int(round(conf.features.hop_seg * fps))
@@ -300,7 +331,7 @@ def feature_transform(conf, mode):
             audio_path = file.replace('.csv',
                                       '_{}hz.wav'.format(conf.features.sr))
             print("Processing file name {}".format(audio_path))
-            features = extract_feature(audio_path, raw_extractor, conf)
+            features = extract_feature(audio_path, feature_extractor, conf)
             print("Features extracted!")
 
             df_pos = df[(df == 'POS').any(axis=1)]
@@ -349,7 +380,7 @@ def feature_transform(conf, mode):
             hf.create_dataset('mean_global', shape=(1,), maxshape=None)
             hf.create_dataset('std_dev_global', shape=(1,), maxshape=None)
 
-            features = extract_feature(audio_path, raw_extractor, conf)
+            features = extract_feature(audio_path, feature_extractor, conf)
             print("Features extracted!")
             mean = np.mean(features)
             std = np.mean(features)

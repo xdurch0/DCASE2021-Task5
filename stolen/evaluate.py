@@ -53,9 +53,15 @@ def evaluate_prototypes(conf: DictConfig,
         dict mapping thresholds to onsets and offsets of events.
 
     """
-    hop_seg_samples = int(conf.features.hop_seg * conf.features.sr)
     start_index_query = hdf_eval['start_index_query'][()][0]
-    start_time_query = start_index_query / conf.features.sr
+    if conf.features.type == "raw":
+        hop_seg_samples = int(conf.features.hop_seg * conf.features.sr)
+        start_time_query = start_index_query / conf.features.sr
+    else:
+        hop_seg_samples = int(conf.features.hop_seg * conf.features.sr //
+                              conf.features.hop_mel)
+        start_time_query = (start_index_query * conf.features.hop_mel /
+                            conf.features.sr)
 
     x_pos, x_neg, x_query = dataset_eval(hdf_eval, conf)
 
@@ -106,10 +112,20 @@ def evaluate_prototypes(conf: DictConfig,
         onset_frames = np.where(changes == 1)[0]
         offset_frames = np.where(changes == -1)[0]
 
-        onset_times = (onset_frames + 1) * hop_seg_samples / conf.features.sr
+        if conf.features.type == "raw":
+            onset_times = ((onset_frames + 1) * hop_seg_samples /
+                           conf.features.sr)
+        else:
+            onset_times = ((onset_frames + 1) * hop_seg_samples *
+                           conf.features.hop_mel / conf.features.sr)
         onset_times = onset_times + start_time_query
 
-        offset_times = (offset_frames + 1) * hop_seg_samples / conf.features.sr
+        if conf.features.type == "raw":
+            offset_times = ((offset_frames + 1) * hop_seg_samples /
+                            conf.features.sr)
+        else:
+            offset_times = ((offset_frames + 1) * hop_seg_samples *
+                            conf.features.hop_mel / conf.features.sr)
         offset_times = offset_times + start_time_query
 
         assert len(onset_times) == len(offset_times)

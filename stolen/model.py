@@ -1,7 +1,7 @@
 """Code to build the Keras model.
 
 """
-from typing import Tuple, Union
+from typing import Tuple, Union, Optional
 
 import librosa
 import numpy as np
@@ -240,7 +240,9 @@ def create_baseline_model(conf) -> tf.keras.Model:
     b4 = baseline_block(b3, 128, dims, scope="block4")
     flat = tfkl.Flatten(name="flatten")(b4)
 
-    model = BaselineProtonet(inp, flat, name="protonet")
+    model = BaselineProtonet(inp, flat, conf.train.n_support,
+                             conf.train.n_query, conf.train.k_way,
+                             name="protonet")
     return model
 
 
@@ -255,12 +257,28 @@ class BaselineProtonet(tf.keras.Model):
     between this distribution and the true classes is used as a loss function.
 
     """
-    @staticmethod
-    def process_batch_input(data_batch: tuple,
+    def __init__(self, inputs: tf.Tensor, outputs: tf.Tensor,
+                 n_support: int, n_query: int, k_way: Optional[int] = None,
+                 **kwargs):
+        """Thin wrapper around the Functional __init__.
+
+        Parameters:
+            inputs: Input to the Model (tf.keras.Input).
+            outputs: Output tensor of the model.
+            n_support: Size of support set.
+            n_query: Size of query set.
+            k_way: If given, number of classes to sample for each training step.
+                   If not given, all classes will be used.
+
+        """
+        super().__init__(inputs, outputs, **kwargs)
+        self.k_way = k_way
+        self.n_support = n_support
+        self.n_query = n_query
+
+    def process_batch_input(self, data_batch: tuple,
                             k_way: Union[int, None] = None) -> Tuple[tf.Tensor,
-                                                                     int,
-                                                                     tf.Tensor,
-                                                                     tf.Tensor]:
+                                                                     int]:
         """Stack zipped data batches into a single one.
 
         Parameters:
@@ -273,14 +291,9 @@ class BaselineProtonet(tf.keras.Model):
             inputs_stacked: Single tensor where first dimension is
                             n_classes*batch_size_per_class.
             n_classes: How many classes there are in the output.
-            n_support: Size of support sets.
-            n_query: Size of query sets.
 
         """
         n_classes = len(data_batch)
-        # TODO support (lol) different configurations
-        n_support = tf.shape(data_batch[0])[0] // 2
-        n_query = n_support
 
         if k_way is not None:
             inputs_stacked = tf.stack(data_batch, axis=0)
@@ -289,20 +302,19 @@ class BaselineProtonet(tf.keras.Model):
             inputs_stacked = tf.gather(inputs_stacked, class_picks)
 
             feature_shape = tf.shape(inputs_stacked)[-2:]
-            stacked_shape = tf.concat([[k_way * (n_support + n_query)],
-                                       feature_shape], axis=0)
+            stacked_shape = tf.concat(
+                [[k_way * (self.n_support + self.n_query)], feature_shape],
+                axis=0)
             inputs_stacked = tf.reshape(inputs_stacked, stacked_shape)
 
             n_classes = k_way
         else:
             inputs_stacked = tf.concat(data_batch, axis=0)
 
-        return inputs_stacked, n_classes, n_support, n_query
+        return inputs_stacked, n_classes
 
     def proto_compute_loss(self, inputs_stacked: tf.Tensor,
                            n_classes: Union[int, tf.Tensor],
-                           n_support: Union[int, tf.Tensor],
-                           n_query: Union[int, tf.Tensor],
                            training: bool = False) -> Tuple[tf.Tensor,
                                                             tf.Tensor,
                                                             tf.Tensor]:
@@ -311,8 +323,6 @@ class BaselineProtonet(tf.keras.Model):
         Parameters:
             inputs_stacked: As returned by process_batch_input.
             n_classes: See above.
-            n_support: See above.
-            n_query: See above!!!!!!1
             training: Whether to run model in training mode (batch norm etc.).
 
         Returns:
@@ -325,10 +335,10 @@ class BaselineProtonet(tf.keras.Model):
         # assumes that embeddings are 1D, so stacked thingy is a
         #  matrix (b x d)
         embeddings_per_class = tf.reshape(
-            embeddings_stacked, [n_classes, n_support + n_query, -1])
-        support_set = embeddings_per_class[:, :n_support]
-        query_set = embeddings_per_class[:, n_support:]
-        query_set = tf.reshape(query_set, [n_classes * n_query, -1])
+            embeddings_stacked, [n_classes, self.n_support + self.n_query, -1])
+        support_set = embeddings_per_class[:, :self.n_support]
+        query_set = embeddings_per_class[:, self.n_support:]
+        query_set = tf.reshape(query_set, [n_classes * self.n_query, -1])
 
         # n_classes x d
         prototypes = tf.reduce_mean(support_set, axis=1)
@@ -345,7 +355,7 @@ class BaselineProtonet(tf.keras.Model):
         logits = -1 * euclidean_dists
 
         labels = tf.repeat(tf.range(n_classes, dtype=tf.int32),
-                           repeats=[n_query])
+                           repeats=[self.n_query])
 
         loss = self.compiled_loss(labels, logits,
                                   regularization_losses=self.losses)
@@ -365,12 +375,12 @@ class BaselineProtonet(tf.keras.Model):
         """
         # process input as one batch of size
         #  b = n_classes * (n_support + n_query)
-        inputs_stacked, n_classes, n_support, n_query = \
-            self.process_batch_input(data, k_way=self.k_way)
+        inputs_stacked, n_classes = self.process_batch_input(data,
+                                                             k_way=self.k_way)
 
         with tf.GradientTape() as tape:
             loss, logits, labels = self.proto_compute_loss(
-                inputs_stacked, n_classes, n_support, n_query, training=True)
+                inputs_stacked, n_classes, training=True)
 
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
@@ -390,24 +400,10 @@ class BaselineProtonet(tf.keras.Model):
             Dictionary of current metrics.
 
         """
-        inputs_stacked, n_classes, n_support, n_query = \
-            self.process_batch_input(data)
+        inputs_stacked, n_classes = self.process_batch_input(data)
 
         loss, logits, labels = self.proto_compute_loss(
-            inputs_stacked, n_classes, n_support, n_query, training=False)
+            inputs_stacked, n_classes, training=False)
 
         self.compiled_metrics.update_state(labels, logits)
         return {m.name: m.result() for m in self.metrics}
-
-    def set_k_way(self, k_way: int):
-        """Set k-way parameter for training the model.
-
-        Should probably not be done like this, but I don't think we can
-        interfere with the Functional __init__ easily.
-
-        Parameters:
-            k_way: The k-way setting to use. Each training step will sample this
-                  many classes out of all the available ones.
-
-        """
-        self.k_way = k_way

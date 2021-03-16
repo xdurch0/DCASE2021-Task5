@@ -78,9 +78,8 @@ def tf_dataset(conf):
     x_train, x_test, y_train, y_test, mean, std = split_train_data(conf)
 
     # batch_size should be support_size + query_size
-    # right now, for simplicity, we choose both the same size
-    # it will be number of examples *per class*!!
-    batch_size = 2*conf.train.n_shot
+    # it will be the number of examples *per class*!!
+    batch_size = conf.train.n_shot + conf.train.n_query
 
     return (per_class_dataset(x_train, y_train, batch_size),
             per_class_dataset(x_test, y_test, batch_size))

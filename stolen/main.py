@@ -35,7 +35,6 @@ def train_protonet(train_dataset, val_dataset, conf):
 
     """
     model = create_baseline_model(conf)
-    model.set_k_way(conf.train.k_way)
 
     opt = tf.optimizers.Adam(conf.train.lr)
     loss_fn = tf.losses.SparseCategoricalCrossentropy(from_logits=True)
@@ -55,11 +54,14 @@ def train_protonet(train_dataset, val_dataset, conf):
 
     # TODO don't hardcode
     # TODO use validation set only once.........
+    # size of largest class * times number of classes
     oversampled_size = 8578 * 20  # no NEG: 5815*19
+    batch_size = conf.train.n_shot + conf.train.n_query
     steps_per_epoch = (int(oversampled_size*0.75) //
-                       (2*conf.train.n_shot * conf.train.k_way))
+                       (batch_size * conf.train.k_way))
     val_steps = (int(oversampled_size*0.25) //
-                 (2*conf.train.n_shot * conf.train.k_way))
+                 (batch_size * conf.train.k_way))
+
     history = model.fit(train_dataset, validation_data=val_dataset,
                         epochs=conf.train.epochs,
                         steps_per_epoch=steps_per_epoch,

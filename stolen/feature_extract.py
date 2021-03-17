@@ -4,18 +4,25 @@
 import os
 from glob import glob
 from itertools import chain
+from typing import Tuple, Union, Optional
 
 import h5py
 import librosa
 import numpy as np
 import pandas as pd
+from omegaconf import DictConfig
 from scipy.io import wavfile
 
 pd.options.mode.chained_assignment = None
 
 
-def fill_simple(h5_file, name, features, seg_len, hop_len,
-                start_index=0, end_index=None):
+def fill_simple(h5_file: h5py.File,
+                name: str,
+                features: np.ndarray,
+                seg_len: int,
+                hop_len: int,
+                start_index: int = 0,
+                end_index: Optional[int] = None):
     """Fill a dataset where segments simply need to be stepped through.
 
     Parameters:
@@ -34,7 +41,6 @@ def fill_simple(h5_file, name, features, seg_len, hop_len,
         end_index = len(features)
 
     # TODO should be able to infer size of the dataset, may be more efficient
-
     h5_file.create_dataset(name, shape=(0, seg_len, n_features),
                            maxshape=(None, seg_len, n_features))
     h5_dataset = h5_file[name]
@@ -57,8 +63,14 @@ def fill_simple(h5_file, name, features, seg_len, hop_len,
     print("   ...Extracted {} segments overall.".format(file_index + 1))
 
 
-def fill_complex(h5_dataset, start_times, end_times, features, seg_len, hop_len,
-                 desired_indices=None, class_list=None):
+def fill_complex(h5_dataset: h5py.Dataset,
+                 start_times: list,
+                 end_times: list,
+                 features: np.ndarray,
+                 seg_len: int,
+                 hop_len: int,
+                 desired_indices: Optional[list] = None,
+                 class_list: Optional[list] = None) -> list:
     n_features = features.shape[1]
 
     if len(h5_dataset[()]) == 0:
@@ -129,8 +141,14 @@ def fill_complex(h5_dataset, start_times, end_times, features, seg_len, hop_len,
     return label_list
 
 
-def create_dataset(df_events, features, glob_cls_name, hf, seg_len, hop_len,
-                   fps, negative):
+def create_dataset(df_events: pd.DataFrame,
+                   features: np.ndarray,
+                   glob_cls_name: str,
+                   hf: h5py.File,
+                   seg_len: int,
+                   hop_len: int,
+                   fps: float,
+                   negative: bool) -> list:
     """Split the data into segments and append to hdf5 dataset.
 
     Parameters:
@@ -177,12 +195,13 @@ class RawExtractor:
         pass
 
     @staticmethod
-    def extract_feature(audio):
+    def extract_feature(audio: np.ndarray) -> np.ndarray:
         return audio[:, None].astype(np.float32)
 
 
 class FeatureExtractor:
-    def __init__(self, conf):
+    def __init__(self,
+                 conf: DictConfig):
         self.sr = conf.features.sr
         self.n_fft = conf.features.n_fft
         self.hop = conf.features.hop_mel
@@ -190,8 +209,11 @@ class FeatureExtractor:
         self.fmax = conf.features.fmax
         self.type = conf.features.type
 
-    def extract_feature(self, audio):
-        mel_spec = librosa.feature.melspectrogram(audio, sr=self.sr,
+    def extract_feature(self,
+                        audio: np.ndarray) -> np.ndarray:
+        audio *= 2**31  # TODO check if this actually matters (prob. not lol)
+        mel_spec = librosa.feature.melspectrogram(audio,
+                                                  sr=self.sr,
                                                   n_fft=self.n_fft,
                                                   hop_length=self.hop,
                                                   n_mels=self.n_mels,
@@ -203,12 +225,14 @@ class FeatureExtractor:
         else:
             raise ValueError("Invalid type {} in "
                              "FeatureExtractor".format(self.type))
-        features = features.astype(np.float32)
+        features = features.T.astype(np.float32)
 
         return features
 
 
-def extract_feature(audio_path, feature_extractor, conf):
+def extract_feature(audio_path: str,
+                    feature_extractor: Union[FeatureExtractor, RawExtractor],
+                    conf: DictConfig) -> np.ndarray:
     """Load audio and apply feature extractor.
 
     Parameters:
@@ -229,13 +253,25 @@ def extract_feature(audio_path, feature_extractor, conf):
     return y
 
 
-def resample_audio(audio_path, conf):
-    y, _ = librosa.load(audio_path, sr=conf.features.sr)
-    wavfile.write(audio_path[:-4] + "_{}hz.wav".format(conf.features.sr),
-                  conf.features.sr, y)
+def resample_audio(audio_path: str,
+                   sr: int):
+    """Resample and save a single audio file.
+
+    Parameters:
+        audio_path: Path to audio file.
+        sr: Target sampling rate.
+
+    """
+    y, _ = librosa.load(audio_path, sr=sr)
+    wavfile.write(audio_path[:-4] + "_{}hz.wav".format(sr), sr, y)
 
 
-def resample_all(conf):
+def resample_all(conf: DictConfig):
+    """Resample all audio files to desired sampling rate.
+
+    Parameters:
+        conf: Hydra config object.
+    """
     meta_path = conf.path.root_dir
     all_files = [file
                  for path_dir, subdir, files in os.walk(meta_path)
@@ -243,24 +279,26 @@ def resample_all(conf):
 
     for file in all_files:
         print("Resampling file {}".format(file))
-        resample_audio(file, conf)
+        resample_audio(file, conf.features.sr)
 
 
-def time_2_frame(df, fps):
+def time_2_frame(df: pd.DataFrame,
+                 fps: float) -> Tuple[list, list]:
     """Convert time in seconds to frames, with a margin.
 
     Parameters:
-        df: Pandas dataframe.
+        df: Dataframe with start and end times in seconds.
         fps: Frames per second.
 
-    Returns: lists of start times and end times.
+    Returns:
+        Lists of start times and end times in frames.
 
     """
     df.loc[:, 'Starttime'] = df['Starttime'] - 0.025
     df.loc[:, 'Endtime'] = df['Endtime'] + 0.025
 
     # TODO is floor on both sensible??
-    start_time = [int(np.ceil(start * fps)) for start in df['Starttime']]
+    start_time = [int(np.floor(start * fps)) for start in df['Starttime']]
 
     end_time = [int(np.floor(end * fps)) for end in df['Endtime']]
 
@@ -309,14 +347,14 @@ def feature_transform(conf, mode):
 
     seg_len_frames = int(round(conf.features.seg_len * fps))
     hop_seg_frames = int(round(conf.features.hop_seg * fps))
-    extension = "*.csv"
+    print("FPS: {}. Segment length (frames): {}. Hop length (frames): "
+          "{}".format(fps, seg_len_frames, hop_seg_frames))
 
     if mode == 'train':
-        print("=== Processing training set ===")
         meta_path = conf.path.train_dir
         all_csv_files = [file
                          for path_dir, subdir, files in os.walk(meta_path)
-                         for file in glob(os.path.join(path_dir, extension))]
+                         for file in glob(os.path.join(path_dir, "*.csv"))]
 
         hdf_train = os.path.join(conf.path.feat_train, 'Mel_train.h5')
         hf = h5py.File(hdf_train, 'w')
@@ -332,7 +370,7 @@ def feature_transform(conf, mode):
                                       '_{}hz.wav'.format(conf.features.sr))
             print("Processing file name {}".format(audio_path))
             features = extract_feature(audio_path, feature_extractor, conf)
-            print("Features extracted!")
+            print("Features extracted! Shape {}".format(features.shape))
 
             df_pos = df[(df == 'POS').any(axis=1)]
             df_neg = df[(df != 'POS').all(axis=1)]
@@ -349,7 +387,6 @@ def feature_transform(conf, mode):
             labels_train.append(label_list)
             print("Negative events added...")
 
-        print(" Feature extraction for training set complete")
         num_extract = len(hf['features'])
         flat_list = [item for sublist in labels_train for item in sublist]
         hf.create_dataset('labels', data=[s.encode() for s in flat_list],
@@ -359,11 +396,10 @@ def feature_transform(conf, mode):
         return num_extract, data_shape
 
     elif mode == "eval":
-        print("=== Processing Validation set ===")
         meta_path = conf.path.eval_dir
         all_csv_files = [file
                          for path_dir, subdir, files in os.walk(meta_path)
-                         for file in glob(os.path.join(path_dir, extension))]
+                         for file in glob(os.path.join(path_dir, "*.csv"))]
         num_extract_eval = 0
 
         for file in all_csv_files:
@@ -381,7 +417,7 @@ def feature_transform(conf, mode):
             hf.create_dataset('std_dev_global', shape=(1,), maxshape=None)
 
             features = extract_feature(audio_path, feature_extractor, conf)
-            print("Features extracted!")
+            print("Features extracted! Shape {}".format(features.shape))
             mean = np.mean(features)
             std = np.mean(features)
             hf['mean_global'][:] = mean
@@ -392,7 +428,7 @@ def feature_transform(conf, mode):
                         hop_seg_frames)
             num_extract_eval += len(hf['feat_neg'])
 
-            print("Creating Positive dataset")
+            print("Creating positive dataset")
             df_eval = pd.read_csv(file, header=0, index_col=False)
             q_list = df_eval['Q'].to_numpy()
 

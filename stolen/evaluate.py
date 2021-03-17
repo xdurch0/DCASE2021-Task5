@@ -63,7 +63,7 @@ def evaluate_prototypes(conf: DictConfig,
         start_time_query = (start_index_query * conf.features.hop_mel /
                             conf.features.sr)
 
-    x_pos, x_neg, x_query = dataset_eval(hdf_eval, conf)
+    x_pos, x_neg, x_query = dataset_eval(hdf_eval)
 
     dataset_query = tf.data.Dataset.from_tensor_slices(x_query)
     dataset_query = dataset_query.batch(conf.eval.query_batch_size)

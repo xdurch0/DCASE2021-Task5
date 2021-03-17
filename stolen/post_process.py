@@ -17,13 +17,13 @@ def post_processing(val_path, evaluation_file, new_evaluation_file, n_shots=5):
     dict_duration = {}
     folders = os.listdir(val_path)
     for folder in folders:
-        files = os.listdir(val_path + folder)
+        files = os.listdir(os.path.join(val_path, folder))
         for file in files:
             if file[-4:] == '.csv':
                 audiofile = file[:-4] + '.wav'
                 annotation = file
                 events = []
-                with open(val_path + folder + '/' + annotation) as csv_file:
+                with open(os.path.join(val_path, folder, annotation)) as csv_file:
                     csv_reader = csv.reader(csv_file, delimiter=',')
                     for row in csv_reader:
                         if row[-1] == 'POS' and len(events) < n_shots:

@@ -13,6 +13,7 @@ from omegaconf import DictConfig
 from stolen.dataset import tf_dataset
 from stolen.evaluate import evaluate_prototypes
 from stolen.feature_extract import feature_transform, resample_all
+from stolen.post_process import post_processing
 from stolen.training import train_protonet
 
 
@@ -91,6 +92,8 @@ def main(conf: DictConfig):
             csv_path = os.path.join(conf.path.results,
                                     'Eval_out_{}.csv'.format(thresh))
             df_out.to_csv(csv_path, index=False)
+            post_processing(conf.path.eval_dir, csv_path,
+                            csv_path[:-4] + "_postproc.csv")
 
 
 if __name__ == '__main__':

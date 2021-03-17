@@ -82,6 +82,9 @@ def create_baseline_model(conf) -> tf.keras.Model:
     model = BaselineProtonet(inp, flat, conf.train.n_shot,
                              conf.train.n_query, conf.train.k_way,
                              name="protonet")
+    print("---Model Summary---")
+    print(model.summary())
+
     return model
 
 

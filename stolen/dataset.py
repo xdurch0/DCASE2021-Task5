@@ -2,10 +2,12 @@
 
 """
 import os
+from typing import Tuple, Iterable
 
 import h5py
 import numpy as np
 import tensorflow as tf
+from omegaconf import DictConfig
 from sklearn.model_selection import train_test_split
 
 AUTOTUNE = tf.data.experimental.AUTOTUNE
@@ -22,7 +24,7 @@ AUTOTUNE = tf.data.experimental.AUTOTUNE
 # - sampling support + query samples can be achieved via dataset.batch()
 
 
-def class_to_int(label_array):
+def class_to_int(label_array: Iterable) -> np.ndarray:
     """Convert string class labels to integer.
 
     Parameters:
@@ -38,7 +40,9 @@ def class_to_int(label_array):
     return y
 
 
-def per_class_dataset(x, y, batch_size):
+def per_class_dataset(x: np.ndarray,
+                      y: np.ndarray,
+                      batch_size: int) -> tf.data.Dataset:
     """Create a "parallel" dataset of many classes.
 
     Parameters:
@@ -65,7 +69,7 @@ def per_class_dataset(x, y, batch_size):
     return tf.data.Dataset.zip(tuple(datasets)).batch(batch_size).prefetch(AUTOTUNE)
 
 
-def tf_dataset(conf):
+def tf_dataset(conf: DictConfig) -> Tuple[tf.data.Dataset, tf.data.Dataset]:
     """Create TF datasets for training and "testing" (while training).
 
     Parameters:
@@ -85,12 +89,11 @@ def tf_dataset(conf):
             per_class_dataset(x_test, y_test, batch_size))
 
 
-def dataset_eval(hf, conf):
+def dataset_eval(hf: h5py.File) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     """Get the separate evaluation datasets and normalize them.
 
     Parameters:
         hf: Open hdf5 file with the evaluation data.
-        conf: hydra config object.
 
     Returns:
         Positive, negative and query evaluation sets.
@@ -104,7 +107,9 @@ def dataset_eval(hf, conf):
     return x_pos, x_neg, x_query
 
 
-def split_train_data(conf):
+def split_train_data(conf: DictConfig) -> Tuple[np.ndarray, np.ndarray,
+                                                np.ndarray, np.ndarray,
+                                                np.ndarray, np.ndarray]:
     """Split training data into train/test and compute statistics.
 
     Parameters:
@@ -132,7 +137,9 @@ def split_train_data(conf):
     return x_train, x_test, y_train, y_test, mean, std
 
 
-def feature_scale(x, shift, scale):
+def feature_scale(x: np.ndarray,
+                  shift: float,
+                  scale: float) -> np.ndarray:
     """Linear normalization of data via shift and scale.
 
     Parameters:
@@ -147,7 +154,7 @@ def feature_scale(x, shift, scale):
     return (x - shift) / scale
 
 
-def norm_params(x):
+def norm_params(x: np.array) -> Tuple[np.ndarray, np.ndarray]:
     """Return shift and scale parameters for normalization.
 
     Arguments:

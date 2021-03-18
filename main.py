@@ -53,9 +53,7 @@ def main(conf: DictConfig):
         if not os.path.isdir(conf.path.Model):
             os.makedirs(conf.path.Model)
 
-        train_dataset, val_dataset = tf_dataset(conf)
-
-        train_protonet(train_dataset, val_dataset, conf)
+        train_protonet(conf)
 
     if conf.set.eval:
         if not os.path.isdir(conf.path.results):

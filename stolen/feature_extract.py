@@ -148,7 +148,7 @@ def create_dataset(df_events: pd.DataFrame,
                    seg_len: int,
                    hop_len: int,
                    fps: float,
-                   negative: bool) -> list:
+                   unknown: bool) -> list:
     """Split the data into segments and append to hdf5 dataset.
 
     Parameters:
@@ -161,7 +161,7 @@ def create_dataset(df_events: pd.DataFrame,
         hop_len: How much to advance per segment if multiple segments are needed
                  to cover one event.
         fps: Frames per second.
-        negative: If True, we are processing negative events -- influences which
+        unknown: If True, we are processing negative events -- influences which
                   class we assign.
 
     Returns:
@@ -170,8 +170,8 @@ def create_dataset(df_events: pd.DataFrame,
     """
     start_times, end_times = time_2_frame(df_events, fps)
 
-    if negative:
-        class_list = ["<NEGATIVE>"] * len(start_times)
+    if unknown:
+        class_list = ["<UNKNOWN>"] * len(start_times)
     else:
         # For csv files with a column name Call, pick the global class name
         if 'CALL' in df_events.columns:
@@ -208,18 +208,25 @@ class FeatureExtractor:
         self.n_mels = conf.features.n_mels
         self.fmax = conf.features.fmax
         self.type = conf.features.type
+        self.time_constant = conf.features.time_constant
 
     def extract_feature(self,
                         audio: np.ndarray) -> np.ndarray:
         audio *= 2**31  # TODO check if this actually matters (prob. not lol)
+        power = 2 if self.type == "logmel" else 1
+
         mel_spec = librosa.feature.melspectrogram(audio,
                                                   sr=self.sr,
                                                   n_fft=self.n_fft,
                                                   hop_length=self.hop,
                                                   n_mels=self.n_mels,
-                                                  fmax=self.fmax)
+                                                  fmax=self.fmax,
+                                                  power=power)
         if self.type == "pcen":
-            features = librosa.core.pcen(mel_spec, sr=self.sr)
+            features = librosa.core.pcen(mel_spec,
+                                         sr=self.sr,
+                                         hop_length=self.hop,
+                                         time_constant=self.time_constant)
         elif self.type == "logmel":
             features = np.log(mel_spec + 1e-8)
         else:
@@ -373,19 +380,24 @@ def feature_transform(conf, mode):
             print("Features extracted! Shape {}".format(features.shape))
 
             df_pos = df[(df == 'POS').any(axis=1)]
-            df_neg = df[(df != 'POS').all(axis=1)]
+            df_unknown = df[(df != 'POS').all(axis=1)]
             label_list = create_dataset(df_pos, features, glob_cls_name, hf,
                                         seg_len_frames, hop_seg_frames, fps,
-                                        False)
+                                        unknown=False)
             labels_train.append(label_list)
             print("Positive events added...")
 
             # use of this is highly questionable!
-            label_list = create_dataset(df_neg, features, glob_cls_name, hf,
+            label_list = create_dataset(df_unknown, features, glob_cls_name, hf,
                                         seg_len_frames, hop_seg_frames, fps,
-                                        True)
+                                        unknown=True)
             labels_train.append(label_list)
-            print("Negative events added...")
+            print("Unknown events added...")
+
+            # TODO add "true negatives" that are not marked at all in csv
+            # idea could be to take intervals that fall outside events
+            # (e.g. time between two randomly picked adjacent events)
+            # should probably just take some, not all the data...
 
         num_extract = len(hf['features'])
         flat_list = [item for sublist in labels_train for item in sublist]

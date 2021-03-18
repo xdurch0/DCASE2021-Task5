@@ -54,12 +54,17 @@ def create_baseline_model(conf) -> tf.keras.Model:
     if conf.features.type == "raw":
         inp = tf.keras.Input(shape=(None, 1))
         if conf.model.preprocess == "mel":
-            preprocessed = LogMel(conf.features.n_fft, conf.features.hop_mel,
-                                  conf.features.sr, trainable=False,
+            preprocessed = LogMel(conf.features.n_mels,
+                                  conf.features.n_fft,
+                                  conf.features.hop_mel,
+                                  conf.features.sr,
+                                  trainable=False,
                                   name="logmel")(inp)
         elif conf.model.preprocess == "sinc":
-            preprocessed = SincConv(conf.features.n_mels, conf.features.n_fft,
-                                    conf.features.hop_mel, "same",
+            preprocessed = SincConv(conf.features.n_mels,
+                                    conf.features.n_fft,
+                                    conf.features.hop_mel,
+                                    padding="same",
                                     name="sinc")(inp)
         else:
             raise ValueError("Invalid preprocessing specified.")

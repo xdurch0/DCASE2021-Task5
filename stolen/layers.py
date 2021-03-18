@@ -9,6 +9,7 @@ class LogMel(tfkl.Layer):
     """Compute Mel spectrograms and apply logarithmic compression."""
 
     def __init__(self,
+                 n_mels: int,
                  n_fft: int,
                  hop_len: int,
                  sr: int,
@@ -17,6 +18,7 @@ class LogMel(tfkl.Layer):
         """Prepare variables for conversion.
 
         Parameters:
+            n_mels: Number of mel frequency bands.
             n_fft: Size of FFT window.
             hop_len: Hop size between FFT applications.
             sr: Sampling rate of audio.
@@ -30,7 +32,7 @@ class LogMel(tfkl.Layer):
         self.hop_len = hop_len
         self.pad = pad
 
-        to_mel = librosa.filters.mel(sr, n_fft).T
+        to_mel = librosa.filters.mel(sr, n_fft, n_mels=n_mels).T
 
         self.mel_matrix = tf.Variable(initial_value=to_mel,
                                       trainable=self.trainable,

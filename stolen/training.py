@@ -1,19 +1,16 @@
 import tensorflow as tf
+from omegaconf import DictConfig
 
+from .dataset import tf_dataset
 from .model import create_baseline_model
 
 
-def train_protonet(train_dataset, val_dataset, conf):
+def train_protonet(conf: DictConfig) -> tf.keras.callbacks.History:
     """Train a Prototypical Network.
 
     Currently only the final model is stored. Training is done from scratch.
 
     Parameters:
-        train_dataset: tf.data.Dataset containing training data.
-        val_dataset: tf.data.Dataset containing validation data. This data is
-                     only meant for validating the n-way task the model is
-                     trained on; it is not the "evaluation data" of the DCASE
-                     challenge.
         conf: hydra config object.
 
     Returns:
@@ -38,14 +35,15 @@ def train_protonet(train_dataset, val_dataset, conf):
         save_best_only=True)
     callbacks = [callback_lr, checkpoints, early_stopping]
 
+    train_dataset, val_dataset, most_common = tf_dataset(conf)
     # TODO don't hardcode
     # TODO use validation set only once.........
     # size of largest class * times number of classes
-    oversampled_size = 8578 * 20  # no NEG: 5815*19
+    oversampled_size = most_common * 20  # no NEG: *19
     batch_size = conf.train.n_shot + conf.train.n_query
-    steps_per_epoch = (int(oversampled_size*0.75) //
+    steps_per_epoch = (int(oversampled_size * (1 - conf.train.test_split)) //
                        (batch_size * conf.train.k_way))
-    val_steps = (int(oversampled_size*0.25) //
+    val_steps = (int(oversampled_size * conf.train.test_split) //
                  (batch_size * conf.train.k_way))
 
     history = model.fit(train_dataset, validation_data=val_dataset,

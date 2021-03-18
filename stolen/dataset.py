@@ -2,6 +2,7 @@
 
 """
 import os
+from collections import Counter
 from typing import Tuple, Iterable
 
 import h5py
@@ -69,24 +70,28 @@ def per_class_dataset(x: np.ndarray,
     return tf.data.Dataset.zip(tuple(datasets)).batch(batch_size).prefetch(AUTOTUNE)
 
 
-def tf_dataset(conf: DictConfig) -> Tuple[tf.data.Dataset, tf.data.Dataset]:
+def tf_dataset(conf: DictConfig) -> Tuple[tf.data.Dataset,
+                                          tf.data.Dataset,
+                                          int]:
     """Create TF datasets for training and "testing" (while training).
 
     Parameters:
         conf: hydra config object.
 
     Returns:
-        Two zipped datasets.
+        Two zipped datasets and a counter of the most common class.
 
     """
-    x_train, x_test, y_train, y_test, mean, std = split_train_data(conf)
+    (x_train, x_test, y_train, y_test,
+     mean, std, most_common) = split_train_data(conf)
 
     # batch_size should be support_size + query_size
     # it will be the number of examples *per class*!!
     batch_size = conf.train.n_shot + conf.train.n_query
 
     return (per_class_dataset(x_train, y_train, batch_size),
-            per_class_dataset(x_test, y_test, batch_size))
+            per_class_dataset(x_test, y_test, batch_size),
+            most_common)
 
 
 def dataset_eval(hf: h5py.File) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
@@ -109,7 +114,7 @@ def dataset_eval(hf: h5py.File) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 def split_train_data(conf: DictConfig) -> Tuple[np.ndarray, np.ndarray,
                                                 np.ndarray, np.ndarray,
-                                                np.ndarray, np.ndarray]:
+                                                np.ndarray, np.ndarray, int]:
     """Split training data into train/test and compute statistics.
 
     Parameters:
@@ -118,6 +123,7 @@ def split_train_data(conf: DictConfig) -> Tuple[np.ndarray, np.ndarray,
     Returns:
         x_train, x_test, y_train, y_test: Split.
         mean, std: Mean and standard deviation of x_train.
+        most_common: Count of the most common class.
 
     """
     hdf_path = os.path.join(conf.path.feat_train, 'Mel_train.h5')
@@ -128,13 +134,15 @@ def split_train_data(conf: DictConfig) -> Tuple[np.ndarray, np.ndarray,
 
     y = class_to_int(labels)
 
-    x_train, x_test, y_train, y_test = train_test_split(x, y,
-                                                        random_state=12,
-                                                        stratify=y)
+    class_counts = Counter(y)
+    most_common = class_counts.most_common(1)[0][1]
+
+    x_train, x_test, y_train, y_test = train_test_split(
+        x, y, test_size=conf.train.test_split, random_state=12, stratify=y)
 
     mean, std = norm_params(x_train)
 
-    return x_train, x_test, y_train, y_test, mean, std
+    return x_train, x_test, y_train, y_test, mean, std, most_common
 
 
 def feature_scale(x: np.ndarray,

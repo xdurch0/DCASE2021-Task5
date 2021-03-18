@@ -209,11 +209,13 @@ class FeatureExtractor:
         self.fmax = conf.features.fmax
         self.type = conf.features.type
         self.time_constant = conf.features.time_constant
+        self.pcen_power = conf.features.power
+        self.bias = conf.features.bias
+        self.gain = conf.features.gain
 
     def extract_feature(self,
                         audio: np.ndarray) -> np.ndarray:
         audio *= 2**31  # TODO check if this actually matters (prob. not lol)
-        power = 2 if self.type == "logmel" else 1
 
         mel_spec = librosa.feature.melspectrogram(audio,
                                                   sr=self.sr,
@@ -221,14 +223,17 @@ class FeatureExtractor:
                                                   hop_length=self.hop,
                                                   n_mels=self.n_mels,
                                                   fmax=self.fmax,
-                                                  power=power)
+                                                  power=1)
         if self.type == "pcen":
             features = librosa.core.pcen(mel_spec,
                                          sr=self.sr,
                                          hop_length=self.hop,
-                                         time_constant=self.time_constant)
+                                         time_constant=self.time_constant,
+                                         power=self.pcen_power,
+                                         bias=self.bias,
+                                         gain=self.gain)
         elif self.type == "logmel":
-            features = np.log(mel_spec + 1e-8)
+            features = np.log(mel_spec**2 + 1e-8)
         else:
             raise ValueError("Invalid type {} in "
                              "FeatureExtractor".format(self.type))
@@ -279,14 +284,20 @@ def resample_all(conf: DictConfig):
     Parameters:
         conf: Hydra config object.
     """
-    meta_path = conf.path.root_dir
+    train_path = conf.path.train_dir
+    eval_path = conf.path.eval_dir
     all_files = [file
-                 for path_dir, subdir, files in os.walk(meta_path)
-                 for file in glob(os.path.join(path_dir, "*.wav"))]
+                 for path_dir, subdir, files in os.walk(train_path)
+                 for file in glob(os.path.join(path_dir, "*.csv"))]
+    all_files += [file
+                  for path_dir, subdir, files in os.walk(eval_path)
+                  for file in glob(os.path.join(path_dir, "*.csv"))]
 
+    sr = conf.features.sr
     for file in all_files:
-        print("Resampling file {}".format(file))
-        resample_audio(file, conf.features.sr)
+        audio_file = file[:-4] + ".wav"
+        print("Resampling file {} to {} Hz".format(audio_file, sr))
+        resample_audio(audio_file, sr)
 
 
 def time_2_frame(df: pd.DataFrame,

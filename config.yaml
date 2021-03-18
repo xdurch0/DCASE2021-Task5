@@ -27,6 +27,9 @@ features:
   n_mels: 128
   hop_mel: 256
   time_constant: 0.2
+  gain: 0.98
+  bias: 2
+  power: 0.5
 train:
   n_shot: 5
   n_query: 55

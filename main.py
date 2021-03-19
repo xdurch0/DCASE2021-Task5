@@ -10,11 +10,10 @@ import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
-from stolen.dataset import tf_dataset
-from stolen.evaluate import evaluate_prototypes
-from stolen.feature_extract import feature_transform, resample_all
+from model.evaluate import evaluate_prototypes
+from data.feature_extract import feature_transform, resample_all
 from stolen.post_process import post_processing
-from stolen.training import train_protonet
+from model.training import train_protonet
 
 
 @hydra.main(config_name="config")

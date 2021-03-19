@@ -2,6 +2,7 @@
 
 """
 import os
+import warnings
 from glob import glob
 from itertools import chain
 from typing import Tuple, Union, Optional
@@ -10,6 +11,7 @@ import h5py
 import librosa
 import numpy as np
 import pandas as pd
+import scipy
 from omegaconf import DictConfig
 from scipy.io import wavfile
 
@@ -232,6 +234,12 @@ class FeatureExtractor:
                                          power=self.pcen_power,
                                          bias=self.bias,
                                          gain=self.gain)
+        elif self.type == "pcen_lowpass":
+            features = pcen_lowpass(mel_spec,
+                                    sr=self.sr,
+                                    hop_length=self.hop,
+                                    time_constant=self.time_constant)
+            features = np.concatenate([mel_spec, features], axis=0)
         elif self.type == "logmel":
             features = np.log(mel_spec**2 + 1e-8)
         else:
@@ -240,6 +248,66 @@ class FeatureExtractor:
         features = features.T.astype(np.float32)
 
         return features
+
+
+def pcen_lowpass(S, sr=22050, hop_length=512, time_constant=0.400, b=None,
+                 max_size=1, ref=None, axis=-1, max_axis=None, zi=None):
+
+    if time_constant <= 0:
+        raise ValueError('time_constant={} must be strictly '
+                         'positive'.format(time_constant))
+
+    if max_size < 1 or not isinstance(max_size, int):
+        raise ValueError('max_size={} must be a positive '
+                         'integer'.format(max_size))
+
+    if b is None:
+        t_frames = time_constant * sr / float(hop_length)
+        # By default, this solves the equation for b:
+        #   b**2  + (1 - b) / t_frames  - 2 = 0
+        # which approximates the full-width half-max of the
+        # squared frequency response of the IIR low-pass filter
+
+        b = (np.sqrt(1 + 4 * t_frames**2) - 1) / (2 * t_frames**2)
+
+    if not 0 <= b <= 1:
+        raise ValueError('b={} must be between 0 and 1'.format(b))
+
+    if np.issubdtype(S.dtype, np.complexfloating):
+        warnings.warn('pcen was called on complex input so phase '
+                      'information will be discarded. To suppress this warning, '
+                      'call pcen(np.abs(D)) instead.')
+        S = np.abs(S)
+
+    if ref is None:
+        if max_size == 1:
+            ref = S
+        elif S.ndim == 1:
+            raise ValueError('Max-filtering cannot be applied to 1-dimensional '
+                             'input')
+        else:
+            if max_axis is None:
+                if S.ndim != 2:
+                    raise ValueError('Max-filtering a {:d}-dimensional '
+                                     'spectrogram requires you to specify '
+                                     'max_axis'.format(S.ndim))
+                # if axis = 0, max_axis=1
+                # if axis = +- 1, max_axis = 0
+                max_axis = np.mod(1 - axis, 2)
+
+            ref = scipy.ndimage.maximum_filter1d(S, max_size, axis=max_axis)
+
+    if zi is None:
+        # Make sure zi matches dimension to input
+        shape = tuple([1] * ref.ndim)
+        zi = np.empty(shape)
+        zi[:] = scipy.signal.lfilter_zi([b], [1, b - 1])[:]
+
+    # Temporal integration
+    S_smooth, zf = scipy.signal.lfilter([b], [1, b - 1], ref, zi=zi,
+                                        axis=axis)
+
+    return S_smooth
 
 
 def extract_feature(audio_path: str,
@@ -296,7 +364,7 @@ def resample_all(conf: DictConfig):
     sr = conf.features.sr
     for file in all_files:
         audio_file = file[:-4] + ".wav"
-        print("Resampling file {} to {} Hz".format(audio_file, sr))
+        print("Resampling file {} to {}Hz".format(audio_file, sr))
         resample_audio(audio_file, sr)
 
 
@@ -362,6 +430,8 @@ def feature_transform(conf, mode):
         fps = conf.features.sr / conf.features.hop_mel
         n_features = conf.features.n_mels
         feature_extractor = FeatureExtractor(conf)
+    if conf.features.type == "pcen_lowpass":
+        n_features *= 2
 
     seg_len_frames = int(round(conf.features.seg_len * fps))
     hop_seg_frames = int(round(conf.features.hop_seg * fps))

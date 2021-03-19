@@ -5,7 +5,7 @@ from typing import Tuple, Union, Optional
 
 import tensorflow as tf
 
-from .layers import LogMel, SincConv
+from .layers import LogMel, SincConv, PCENCompression
 
 tfkl = tf.keras.layers
 
@@ -68,7 +68,16 @@ def create_baseline_model(conf) -> tf.keras.Model:
                                     name="sinc")(inp)
         else:
             raise ValueError("Invalid preprocessing specified.")
-    else:
+
+    elif conf.features.type == "pcen_lowpass":
+        inp = tf.keras.Input(shape=(None, 2*conf.features.n_mels))
+        preprocessed = PCENCompression(gain=conf.features.gain,
+                                       power=conf.features.power,
+                                       bias=conf.features.bias,
+                                       eps=conf.features.eps,
+                                       name="pcen_compress")
+
+    else:  # PCEN or Mel
         inp = tf.keras.Input(shape=(None, conf.features.n_mels))
         preprocessed = inp
 

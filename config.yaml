@@ -18,7 +18,7 @@ path:
   results: ${path.root_dir}/Results
 
 features:
-  type: pcen
+  type: pcen_lowpass
   seg_len: 0.200
   hop_seg: 0.050
   fmax: 11025
@@ -28,7 +28,7 @@ features:
   hop_mel: 256
   time_constant: 0.2
   gain: 0.98
-  bias: 2
+  bias: 2.
   power: 0.5
   eps: 1e-6
 train:
@@ -46,6 +46,6 @@ model:
 
 eval:
   samples_neg: 650
-  iterations: 25
+  iterations: 10
   query_batch_size: 256
   negative_set_batch_size : 256

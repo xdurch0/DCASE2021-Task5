@@ -6,7 +6,7 @@ tfkl = tf.keras.layers
 
 
 def inverse_softplus(x):
-    return tf.math.log(tf.exp(x) - 1)
+    return tf.math.log(tf.exp(x) - 1.)
 
 
 class LogMel(tfkl.Layer):
@@ -211,15 +211,19 @@ class PCENCompression(tfkl.Layer):
         super().__init__(**kwargs)
         self.gain = tf.Variable(initial_value=inverse_softplus(gain),
                                 trainable=self.trainable,
+                                dtype=tf.float32,
                                 name=self.name + "_gain")
         self.power = tf.Variable(initial_value=inverse_softplus(power),
                                  trainable=self.trainable,
+                                 dtype=tf.float32,
                                  name=self.name + "_power")
         self.bias = tf.Variable(initial_value=inverse_softplus(bias),
                                 trainable=self.trainable,
+                                dtype=tf.float32,
                                 name=self.name + "_bias")
         self.eps = tf.Variable(initial_value=inverse_softplus(eps),
                                trainable=self.trainable,
+                               dtype=tf.float32,
                                name=self.name + "_eps")
 
     def call(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:

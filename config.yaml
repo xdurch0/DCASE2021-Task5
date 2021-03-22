@@ -30,6 +30,7 @@ features:
   gain: 0.98
   bias: 2
   power: 0.5
+  eps: 1e-6
 train:
   n_shot: 5
   n_query: 55

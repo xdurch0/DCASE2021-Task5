@@ -75,7 +75,7 @@ def create_baseline_model(conf) -> tf.keras.Model:
                                        power=conf.features.power,
                                        bias=conf.features.bias,
                                        eps=conf.features.eps,
-                                       name="pcen_compress")
+                                       name="pcen_compress")(inp)
 
     else:  # PCEN or Mel
         inp = tf.keras.Input(shape=(None, conf.features.n_mels))

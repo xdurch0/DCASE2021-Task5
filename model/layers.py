@@ -34,6 +34,7 @@ class LogMel(tfkl.Layer):
 
         """
         super().__init__(**kwargs)
+        self.n_mels = n_mels
         self.n_fft = n_fft
         self.hop_len = hop_len
         self.pad = pad
@@ -42,11 +43,13 @@ class LogMel(tfkl.Layer):
 
         self.mel_matrix = tf.Variable(initial_value=to_mel,
                                       trainable=self.trainable,
+                                      dtype=tf.float32,
                                       name=self.name + "_weights")
         self.compression = tf.Variable(
-            initial_value=tf.constant(inverse_softplus(compression),
-                                      dtype=tf.float32),
-            trainable=self.trainable, name=self.name + "_compression")
+            initial_value=tf.ones(n_mels) * inverse_softplus(compression),
+            trainable=self.trainable,
+            dtype=tf.float32,
+            name=self.name + "_compression")
 
     def call(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
         """Apply the layer.
@@ -203,28 +206,33 @@ class SincConv(tfkl.Layer):
 
 class PCENCompression(tfkl.Layer):
     def __init__(self,
+                 n_channels: int,
                  gain: float,
                  power: float,
                  bias: float,
                  eps: float,
                  **kwargs):
         super().__init__(**kwargs)
-        self.gain = tf.Variable(initial_value=inverse_softplus(gain),
-                                trainable=self.trainable,
-                                dtype=tf.float32,
-                                name=self.name + "_gain")
-        self.power = tf.Variable(initial_value=inverse_softplus(power),
-                                 trainable=self.trainable,
-                                 dtype=tf.float32,
-                                 name=self.name + "_power")
-        self.bias = tf.Variable(initial_value=inverse_softplus(bias),
-                                trainable=self.trainable,
-                                dtype=tf.float32,
-                                name=self.name + "_bias")
-        self.eps = tf.Variable(initial_value=inverse_softplus(eps),
-                               trainable=self.trainable,
-                               dtype=tf.float32,
-                               name=self.name + "_eps")
+        self.gain = tf.Variable(
+            initial_value=tf.ones(n_channels) * inverse_softplus(gain),
+            trainable=self.trainable,
+            dtype=tf.float32,
+            name=self.name + "_gain")
+        self.power = tf.Variable(
+            initial_value=tf.ones(n_channels) * inverse_softplus(power),
+            trainable=self.trainable,
+            dtype=tf.float32,
+            name=self.name + "_power")
+        self.bias = tf.Variable(
+            initial_value=tf.ones(n_channels) * inverse_softplus(bias),
+            trainable=self.trainable,
+            dtype=tf.float32,
+            name=self.name + "_bias")
+        self.eps = tf.Variable(
+            initial_value=tf.ones(n_channels) * inverse_softplus(eps),
+            trainable=self.trainable,
+            dtype=tf.float32,
+            name=self.name + "_eps")
 
     def call(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
         gain = tf.nn.softplus(self.gain)
@@ -239,9 +247,10 @@ class PCENCompression(tfkl.Layer):
                                  tf.math.log1p(spectro_smooth / eps)))
 
         # Dynamic range compression
-        if power == 0:
+        # TODO add 0 cases again
+        if False:  # power == 0:
             out = tf.math.log1p(spectro * smooth)
-        elif bias == 0:
+        elif False:  # bias == 0:
             out = tf.exp(power * (tf.math.log(spectro) + tf.math.log(smooth)))
         else:
             out = (bias ** power) * tf.math.expm1(

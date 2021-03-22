@@ -4,6 +4,7 @@
 from typing import Tuple, Union, Optional
 
 import tensorflow as tf
+from omegaconf import DictConfig
 
 from .layers import LogMel, SincConv, PCENCompression
 
@@ -40,8 +41,13 @@ def baseline_block(inp: tf.Tensor,
     return pool
 
 
-def create_baseline_model(conf) -> tf.keras.Model:
+def create_baseline_model(conf: DictConfig,
+                          print_summary: bool = False) -> tf.keras.Model:
     """Create a simple model structure for the Prototypical Network.
+
+    Parameters:
+        conf: hydra config object.
+        print_summary: If True, print the model summary for information.
 
     Returns:
         The built model.

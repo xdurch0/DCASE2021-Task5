@@ -17,7 +17,7 @@ def train_protonet(conf: DictConfig) -> tf.keras.callbacks.History:
         history: history object obtained by keras.fit.
 
     """
-    model = create_baseline_model(conf)
+    model = create_baseline_model(conf, print_summary=True)
 
     opt = tf.optimizers.Adam(conf.train.lr)
     loss_fn = tf.losses.SparseCategoricalCrossentropy(from_logits=True)

@@ -5,6 +5,10 @@ import tensorflow as tf
 tfkl = tf.keras.layers
 
 
+def inverse_softplus(x):
+    return tf.math.log(tf.exp(x) - 1)
+
+
 class LogMel(tfkl.Layer):
     """Compute Mel spectrograms and apply logarithmic compression."""
 
@@ -14,6 +18,7 @@ class LogMel(tfkl.Layer):
                  hop_len: int,
                  sr: int,
                  pad: bool = True,
+                 compression: float = 1e-8,
                  **kwargs):
         """Prepare variables for conversion.
 
@@ -24,6 +29,7 @@ class LogMel(tfkl.Layer):
             sr: Sampling rate of audio.
             pad: Whether to pad first/last FFT windows. This means frames will
                  be "centered" around time instead of "left-aligned".
+            compression: Additive offset for log compression.
             kwargs: Arguments for tfkl.Layer.
 
         """
@@ -38,7 +44,8 @@ class LogMel(tfkl.Layer):
                                       trainable=self.trainable,
                                       name=self.name + "_weights")
         self.compression = tf.Variable(
-            initial_value=tf.constant(1e-8, dtype=tf.float32),
+            initial_value=tf.constant(inverse_softplus(compression),
+                                      dtype=tf.float32),
             trainable=self.trainable, name=self.name + "_compression")
 
     def call(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
@@ -62,7 +69,7 @@ class LogMel(tfkl.Layer):
         power = tf.abs(spectros) ** 2
 
         mel = tf.matmul(power, self.mel_matrix)
-        logmel = tf.math.log(mel + self.compression)
+        logmel = tf.math.log(mel + tf.nn.softplus(self.compression))
 
         return logmel
 
@@ -202,25 +209,38 @@ class PCENCompression(tfkl.Layer):
                  eps: float,
                  **kwargs):
         super().__init__(**kwargs)
-        self.gain = gain
-        self.power = power
-        self.bias = bias
-        self.eps = eps
+        self.gain = tf.Variable(initial_value=inverse_softplus(gain),
+                                trainable=self.trainable,
+                                name=self.name + "_gain")
+        self.power = tf.Variable(initial_value=inverse_softplus(power),
+                                 trainable=self.trainable,
+                                 name=self.name + "_power")
+        self.bias = tf.Variable(initial_value=inverse_softplus(bias),
+                                trainable=self.trainable,
+                                name=self.name + "_bias")
+        self.eps = tf.Variable(initial_value=inverse_softplus(eps),
+                               trainable=self.trainable,
+                               name=self.name + "_eps")
 
     def call(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
-        S, S_smooth = tf.split(inputs, 2, axis=-1)
+        gain = tf.nn.softplus(self.gain)
+        power = tf.nn.softplus(self.power)
+        bias = tf.nn.softplus(self.bias)
+        eps = tf.nn.softplus(self.eps)
+
+        spectro, spectro_smooth = tf.split(inputs, 2, axis=-1)
         # Adaptive gain control
         # Working in log-space gives us some stability, and a slight speedup
-        smooth = tf.exp(-self.gain * (tf.math.log(self.eps) +
-                                      tf.math.log1p(S_smooth / self.eps)))
+        smooth = tf.exp(-gain * (tf.math.log(eps) +
+                                 tf.math.log1p(spectro_smooth / eps)))
 
         # Dynamic range compression
-        if self.power == 0:
-            S_out = tf.math.log1p(S * smooth)
-        elif self.bias == 0:
-            S_out = tf.exp(self.power * (tf.math.log(S) + tf.math.log(smooth)))
+        if power == 0:
+            out = tf.math.log1p(spectro * smooth)
+        elif bias == 0:
+            out = tf.exp(power * (tf.math.log(spectro) + tf.math.log(smooth)))
         else:
-            S_out = (self.bias ** self.power) * tf.math.expm1(
-                self.power * tf.math.log1p(S * smooth / self.bias))
+            out = (bias ** power) * tf.math.expm1(
+                power * tf.math.log1p(spectro * smooth / bias))
 
-        return S_out
+        return out

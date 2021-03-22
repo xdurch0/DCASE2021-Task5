@@ -36,7 +36,7 @@ def baseline_block(inp: tf.Tensor,
 
     conv = conv_fn(filters, 3, padding="same", name=scope + "_conv")(inp)
     bn = tfkl.BatchNormalization(name=scope + "_bn")(conv)
-    activation = tfkl.ReLU(name=scope + "_relu")(bn)
+    activation = tfkl.Activation(tf.nn.swish, name=scope + "_relu")(bn)
     pool = pool_fn(2, padding="same", name=scope + "_pool")(activation)
     return pool
 
@@ -77,11 +77,12 @@ def create_baseline_model(conf: DictConfig,
 
     elif conf.features.type == "pcen_lowpass":
         inp = tf.keras.Input(shape=(None, 2*conf.features.n_mels))
-        preprocessed = PCENCompression(gain=conf.features.gain,
+        preprocessed = PCENCompression(n_channels=conf.features.n_mels,
+                                       gain=conf.features.gain,
                                        power=conf.features.power,
                                        bias=conf.features.bias,
                                        eps=conf.features.eps,
-                                       trainable=False,
+                                       trainable=True,
                                        name="pcen_compress")(inp)
 
     else:  # PCEN or Mel

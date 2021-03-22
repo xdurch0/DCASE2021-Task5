@@ -10,10 +10,11 @@ import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
-from model.evaluate import evaluate_prototypes
 from data.feature_extract import feature_transform, resample_all
-from stolen.post_process import post_processing
+from model.evaluate import evaluate_prototypes
+from model.model import create_baseline_model
 from model.training import train_protonet
+from stolen.post_process import post_processing
 
 
 @hydra.main(config_name="config")
@@ -52,45 +53,57 @@ def main(conf: DictConfig):
         if not os.path.isdir(conf.path.Model):
             os.makedirs(conf.path.Model)
 
-        train_protonet(conf)
+        for index in range(conf.set.n_runs):
+            print("Training model #{} out of {}...".format(index,
+                                                           conf.set.n_runs))
+            train_protonet(conf, index)
 
     if conf.set.eval:
         if not os.path.isdir(conf.path.results):
             os.makedirs(conf.path.results)
 
         thresholds = np.around(np.linspace(0., 1., 101), decimals=2)
-        name_dict = {t: np.array([]) for t in thresholds}
-        onset_dict = {t: np.array([]) for t in thresholds}
-        offset_dict = {t: np.array([]) for t in thresholds}
         all_feat_files = [file for file in glob(os.path.join(
             conf.path.feat_eval, '*.h5'))]
 
-        for feat_file in all_feat_files:
-            feat_name = feat_file.split('/')[-1]
-            audio_name = feat_name.replace('h5', 'wav')
+        for index in range(conf.set.n_runs):
+            print("Evaluating model #{} out of {}".format(index,
+                                                          conf.set.n_runs))
+            name_dict = {t: np.array([]) for t in thresholds}
+            onset_dict = {t: np.array([]) for t in thresholds}
+            offset_dict = {t: np.array([]) for t in thresholds}
 
-            print("Processing audio file : {}".format(audio_name))
+            model = create_baseline_model(conf)
+            model.load_weights(conf.path.best_model + str(index) + ".h5")
 
-            hdf_eval = h5py.File(feat_file, 'r')
+            for feat_file in all_feat_files:
+                feat_name = feat_file.split('/')[-1]
+                audio_name = feat_name.replace('h5', 'wav')
 
-            on_off_sets = evaluate_prototypes(conf, hdf_eval, thresholds)
+                print("Processing audio file : {}".format(audio_name))
 
-            for thresh, (onset, offset) in on_off_sets.items():
-                name = np.repeat(audio_name, len(onset))
-                name_dict[thresh] = np.append(name_dict[thresh], name)
-                onset_dict[thresh] = np.append(onset_dict[thresh], onset)
-                offset_dict[thresh] = np.append(offset_dict[thresh], offset)
+                hdf_eval = h5py.File(feat_file, 'r')
 
-        print("Writing {} files...".format(len(thresholds)))
-        for thresh in thresholds:
-            df_out = pd.DataFrame({'Audiofilename': name_dict[thresh],
-                                   'Starttime': onset_dict[thresh],
-                                   'Endtime': offset_dict[thresh]})
-            csv_path = os.path.join(conf.path.results,
-                                    'Eval_out_{}.csv'.format(thresh))
-            df_out.to_csv(csv_path, index=False)
-            post_processing(conf.path.eval_dir, csv_path,
-                            csv_path[:-4] + "_postproc.csv")
+                on_off_sets = evaluate_prototypes(conf, hdf_eval, model,
+                                                  thresholds)
+
+                for thresh, (onset, offset) in on_off_sets.items():
+                    name = np.repeat(audio_name, len(onset))
+                    name_dict[thresh] = np.append(name_dict[thresh], name)
+                    onset_dict[thresh] = np.append(onset_dict[thresh], onset)
+                    offset_dict[thresh] = np.append(offset_dict[thresh], offset)
+
+            print("Writing {} files...".format(len(thresholds)))
+            for thresh in thresholds:
+                df_out = pd.DataFrame({'Audiofilename': name_dict[thresh],
+                                       'Starttime': onset_dict[thresh],
+                                       'Endtime': offset_dict[thresh]})
+                csv_path = os.path.join(
+                    conf.path.results,
+                    'Eval_out_model{}_thresh{}.csv'.format(index, thresh))
+                df_out.to_csv(csv_path, index=False)
+                post_processing(conf.path.eval_dir, csv_path,
+                                csv_path[:-4] + "_postproc.csv")
 
 
 if __name__ == '__main__':

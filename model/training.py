@@ -5,19 +5,20 @@ from .dataset import tf_dataset
 from .model import create_baseline_model
 
 
-def train_protonet(conf: DictConfig) -> tf.keras.callbacks.History:
+def train_protonet(conf: DictConfig, index: int) -> tf.keras.callbacks.History:
     """Train a Prototypical Network.
 
     Currently only the final model is stored. Training is done from scratch.
 
     Parameters:
         conf: hydra config object.
+        index: Index of the training process; for training many models.
 
     Returns:
         history: history object obtained by keras.fit.
 
     """
-    model = create_baseline_model(conf, print_summary=True)
+    model = create_baseline_model(conf, print_summary=index == 0)
 
     opt = tf.optimizers.Adam(conf.train.lr)
     loss_fn = tf.losses.SparseCategoricalCrossentropy(from_logits=True)
@@ -31,8 +32,8 @@ def train_protonet(conf: DictConfig) -> tf.keras.callbacks.History:
     early_stopping = tf.keras.callbacks.EarlyStopping(
         patience=2*conf.train.patience, verbose=1)
     checkpoints = tf.keras.callbacks.ModelCheckpoint(
-        conf.path.best_model, verbose=1, save_weights_only=1,
-        save_best_only=True)
+        conf.path.best_model + str(index) + ".h5", verbose=1,
+        save_weights_only=True, save_best_only=True)
     callbacks = [callback_lr, checkpoints, early_stopping]
 
     train_dataset, val_dataset, most_common = tf_dataset(conf)
@@ -52,6 +53,6 @@ def train_protonet(conf: DictConfig) -> tf.keras.callbacks.History:
                         validation_steps=val_steps,
                         callbacks=callbacks)
 
-    model.save_weights(conf.path.last_model)
+    model.save_weights(conf.path.last_model + str(index) + ".h5")
 
     return history

@@ -9,7 +9,6 @@ import tensorflow as tf
 from omegaconf import DictConfig
 
 from .dataset import dataset_eval
-from .model import create_baseline_model
 
 
 def get_probability(positive_prototype: Union[tf.Tensor, np.array],
@@ -40,6 +39,7 @@ def get_probability(positive_prototype: Union[tf.Tensor, np.array],
 
 def evaluate_prototypes(conf: DictConfig,
                         hdf_eval: h5py.File,
+                        model: tf.keras.Model,
                         thresholds: Sequence) -> dict:
     """Run the evaluation for a single dataset.
 
@@ -47,6 +47,7 @@ def evaluate_prototypes(conf: DictConfig,
         conf: hydra config object.
         hdf_eval: Open hd5 file containing positive, negative and query
                   features.
+        model: The model to evaluate.
         thresholds: 1D container with all "positive" thresholds to try.
 
     Returns:
@@ -67,9 +68,6 @@ def evaluate_prototypes(conf: DictConfig,
 
     dataset_query = tf.data.Dataset.from_tensor_slices(x_query)
     dataset_query = dataset_query.batch(conf.eval.query_batch_size)
-
-    model = create_baseline_model(conf)
-    model.load_weights(conf.path.best_model)
 
     positive_embeddings = model(x_pos)
     positive_prototype = positive_embeddings.numpy().mean(axis=0)

@@ -4,6 +4,7 @@ set:
   features_eval: false
   train: false
   eval: false
+  n_runs: 2
 
 path:
   root_dir:  /project/jens/DCASE2021-Task5/Development_Set
@@ -13,8 +14,8 @@ path:
   feat_train: ${path.feat_path}/feat_train
   feat_eval:  ${path.feat_path}/feat_eval
   Model: ${path.root_dir}/Model
-  best_model: ${path.Model}/best_model.h5
-  last_model: ${path.Model}/last_model.h5
+  best_model: ${path.Model}/best_model
+  last_model: ${path.Model}/last_model
   results: ${path.root_dir}/Results
 
 features:

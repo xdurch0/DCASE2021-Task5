@@ -10,7 +10,7 @@ import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
-from data.feature_extract import feature_transform, resample_all
+from data.preparation import feature_transform, resample_all
 from model.evaluate import evaluate_prototypes
 from model.model import create_baseline_model
 from model.training import train_protonet

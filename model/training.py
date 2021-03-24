@@ -29,8 +29,10 @@ def train_protonet(conf: DictConfig, index: int) -> tf.keras.callbacks.History:
     callback_lr = tf.keras.callbacks.ReduceLROnPlateau(
         factor=conf.train.scheduler_gamma,
         patience=conf.train.patience, verbose=1)
+    # using n times the LR reduction patience means we allow for (n-1) LR
+    # reductions before stopping
     early_stopping = tf.keras.callbacks.EarlyStopping(
-        patience=2*conf.train.patience, verbose=1)
+        patience=3*conf.train.patience, verbose=1)
     checkpoints = tf.keras.callbacks.ModelCheckpoint(
         conf.path.best_model + str(index) + ".h5", verbose=1,
         save_weights_only=True, save_best_only=True)

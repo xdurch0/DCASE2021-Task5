@@ -64,7 +64,6 @@ def create_baseline_model(conf: DictConfig,
                                   conf.features.n_fft,
                                   conf.features.hop_mel,
                                   conf.features.sr,
-                                  trainable=False,
                                   name="logmel")(inp)
         elif conf.model.preprocess == "sinc":
             preprocessed = SincConv(conf.features.n_mels,
@@ -82,7 +81,6 @@ def create_baseline_model(conf: DictConfig,
                                        power=conf.features.power,
                                        bias=conf.features.bias,
                                        eps=conf.features.eps,
-                                       trainable=True,
                                        name="pcen_compress")(inp)
 
     else:  # PCEN or Mel

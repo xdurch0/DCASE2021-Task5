@@ -54,8 +54,8 @@ def main(conf: DictConfig):
             os.makedirs(conf.path.Model)
 
         for index in range(conf.set.n_runs):
-            print("Training model #{} out of {}...".format(index,
-                                                           conf.set.n_runs))
+            print("\nTraining model #{} out of {}...".format(index + 1,
+                                                             conf.set.n_runs))
             train_protonet(conf, index)
 
     if conf.set.eval:
@@ -67,8 +67,8 @@ def main(conf: DictConfig):
             conf.path.feat_eval, '*.h5'))]
 
         for index in range(conf.set.n_runs):
-            print("Evaluating model #{} out of {}".format(index,
-                                                          conf.set.n_runs))
+            print("\nEvaluating model #{} out of {}".format(index + 1,
+                                                            conf.set.n_runs))
             name_dict = {t: np.array([]) for t in thresholds}
             onset_dict = {t: np.array([]) for t in thresholds}
             offset_dict = {t: np.array([]) for t in thresholds}

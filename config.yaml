@@ -32,6 +32,7 @@ features:
   bias: 2.
   power: 0.5
   eps: 1e-6
+  center: True
 train:
   n_shot: 5
   n_query: 55

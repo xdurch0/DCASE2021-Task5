@@ -10,14 +10,17 @@ from scipy import signal
 
 
 class RawExtractor:
-    def __init__(self):
-        pass
+    def __init__(self,
+                 conf: DictConfig):
+        self.center = conf.features.center
+        self.pad_len = conf.features.n_fft // 2
 
-    @staticmethod
-    def extract_feature(audio: np.ndarray) -> np.ndarray:
+    def extract_feature(self, audio: np.ndarray) -> np.ndarray:
+        if self.center:
+            audio = np.pad(audio, self.pad_len, mode="reflect")
         return audio[:, None].astype(np.float32)
 
-
+m
 class FeatureExtractor:
     def __init__(self,
                  conf: DictConfig):
@@ -26,15 +29,19 @@ class FeatureExtractor:
         self.hop = conf.features.hop_mel
         self.n_mels = conf.features.n_mels
         self.fmax = conf.features.fmax
+        self.center = conf.features.center
+
         self.type = conf.features.type
+
         self.time_constant = conf.features.time_constant
         self.pcen_power = conf.features.power
         self.bias = conf.features.bias
         self.gain = conf.features.gain
+        self.eps = conf.features.eps
 
     def extract_feature(self,
                         audio: np.ndarray) -> np.ndarray:
-        audio *= 2**31  # TODO check if this actually matters (prob. not lol)
+        audio *= 2**31  # TODO check if this actually matters
 
         mel_spec = librosa.feature.melspectrogram(audio,
                                                   sr=self.sr,
@@ -42,7 +49,8 @@ class FeatureExtractor:
                                                   hop_length=self.hop,
                                                   n_mels=self.n_mels,
                                                   fmax=self.fmax,
-                                                  power=1)
+                                                  power=1,
+                                                  center=self.center)
         if self.type == "pcen":
             features = librosa.core.pcen(mel_spec,
                                          sr=self.sr,
@@ -50,18 +58,23 @@ class FeatureExtractor:
                                          time_constant=self.time_constant,
                                          power=self.pcen_power,
                                          bias=self.bias,
-                                         gain=self.gain)
+                                         gain=self.gain,
+                                         eps=self.eps)
+
         elif self.type == "pcen_lowpass":
             features = pcen_lowpass(mel_spec,
                                     sr=self.sr,
                                     hop_length=self.hop,
                                     time_constant=self.time_constant)
             features = np.concatenate([mel_spec, features], axis=0)
+
         elif self.type == "logmel":
             features = np.log(mel_spec**2 + 1e-8)
+
         else:
             raise ValueError("Invalid type {} in "
                              "FeatureExtractor".format(self.type))
+
         features = features.T.astype(np.float32)
 
         return features

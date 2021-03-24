@@ -42,7 +42,7 @@ class LogMel(tfkl.Layer):
         to_mel = librosa.filters.mel(sr, n_fft, n_mels=n_mels).T
 
         self.mel_matrix = tf.Variable(initial_value=to_mel,
-                                      trainable=self.trainable,
+                                      trainable=False,
                                       dtype=tf.float32,
                                       name=self.name + "_weights")
         self.compression = tf.Variable(
@@ -88,6 +88,7 @@ class SincConv(tfkl.Layer):
                  normalize: bool = True,
                  mel_init: bool = True,
                  window: bool = True,
+                 compression: float = 1e-8,
                  **kwargs):
         """Set up parameters for the sinc layer.
 
@@ -103,6 +104,7 @@ class SincConv(tfkl.Layer):
                       scale. Otherwise, frequencies are sampled uniformly
                       between 0 and the Nyquist frequency.
             window: If True, apply window to the Sinc filters.
+            compression: Offset for logarithmic compression.
             kwargs: Arguments for tfkl.Layer.
 
         """
@@ -156,6 +158,12 @@ class SincConv(tfkl.Layer):
                                      self.kernel_size // 2 + 1,
                                      dtype=tf.float32)
 
+        self.compression = tf.Variable(
+            initial_value=tf.ones(filters) * inverse_softplus(compression),
+            trainable=self.trainable,
+            dtype=tf.float32,
+            name=self.name + "_compression")
+
     def call(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
         """Apply the layer.
 
@@ -168,8 +176,11 @@ class SincConv(tfkl.Layer):
 
         """
         kernels = self.get_kernels()[:, None, :]
-        return tf.nn.conv1d(inputs, kernels, stride=self.strides,
-                            padding=self.padding.upper())
+        filtered = tf.nn.conv1d(inputs, kernels, stride=self.strides,
+                                padding=self.padding.upper())
+        filtered = tf.abs.log(filtered + tf.nn.softplus(self.compression))
+
+        return filtered
 
     def get_kernels(self) -> tf.Tensor:
         """Get bandpass sinc kernels for convolution.

@@ -138,7 +138,6 @@ def fill_complex(h5_dataset: h5py.Dataset,
             file_index += 1
 
     print("   ...Extracted {} segments so far.".format(file_index))
-
     return label_list
 
 
@@ -149,7 +148,9 @@ def create_dataset(df_events: pd.DataFrame,
                    seg_len: int,
                    hop_len: int,
                    fps: float,
-                   unknown: bool) -> list:
+                   positive: bool,
+                   start_times: Optional[list] = None,
+                   end_times: Optional[list] = None) -> list:
     """Split the data into segments and append to hdf5 dataset.
 
     Parameters:
@@ -162,25 +163,27 @@ def create_dataset(df_events: pd.DataFrame,
         hop_len: How much to advance per segment if multiple segments are needed
                  to cover one event.
         fps: Frames per second.
-        unknown: If True, we are processing negative events -- influences which
+        positive: If True, we are processing unknown events -- influences which
                   class we assign.
+        start_times: Optional, event start times (in frames!). If not given,
+                     both start and end times will be extracted from the data
+                     frame.
+        end_times: Optional, event end times (in frames!).
 
     Returns:
         List of labels per extracted segment.
 
     """
-    start_times, end_times = time_2_frame(df_events, fps)
+    # we assume either both will be None, or neither!!
+    if start_times is None:
+        start_times, end_times = time_2_frame(df_events, fps)
 
-    if unknown:
-        class_list = ["<UNKNOWN>"] * len(start_times)
+    if not positive or 'CALL' in df_events.columns:
+        class_list = [glob_cls_name] * len(start_times)
     else:
-        # For csv files with a column name Call, pick the global class name
-        if 'CALL' in df_events.columns:
-            class_list = [glob_cls_name] * len(start_times)
-        else:
-            class_list = [df_events.columns[(df_events == 'POS').loc[index]].values for
-                          index, row in df_events.iterrows()]
-            class_list = list(chain.from_iterable(class_list))
+        class_list = [df_events.columns[(df_events == 'POS').loc[index]].values for
+                      index, row in df_events.iterrows()]
+        class_list = list(chain.from_iterable(class_list))
 
     assert len(start_times) == len(end_times)
     assert len(class_list) == len(start_times)
@@ -189,9 +192,6 @@ def create_dataset(df_events: pd.DataFrame,
                               seg_len, hop_len, class_list=class_list)
 
     return label_list
-
-
-
 
 
 def resample_all(conf: DictConfig):
@@ -273,7 +273,7 @@ def feature_transform(conf, mode):
     if conf.features.type == "raw":
         fps = conf.features.sr
         n_features = 1
-        feature_extractor = RawExtractor()
+        feature_extractor = RawExtractor(conf)
     else:
         fps = conf.features.sr / conf.features.hop_mel
         n_features = conf.features.n_mels
@@ -292,8 +292,8 @@ def feature_transform(conf, mode):
                          for path_dir, subdir, files in os.walk(meta_path)
                          for file in glob(os.path.join(path_dir, "*.csv"))]
 
-        hdf_train = os.path.join(conf.path.feat_train, 'Mel_train.h5')
-        hf = h5py.File(hdf_train, 'w')
+        hdf_train_path = os.path.join(conf.path.feat_train, 'Mel_train.h5')
+        hf = h5py.File(hdf_train_path, 'w')
         hf.create_dataset('features',
                           shape=(0, seg_len_frames, n_features),
                           maxshape=(None, seg_len_frames, n_features))
@@ -309,17 +309,17 @@ def feature_transform(conf, mode):
             print("Features extracted! Shape {}".format(features.shape))
 
             df_pos = df[(df == 'POS').any(axis=1)]
-            df_unknown = df[(df != 'POS').all(axis=1)]
             label_list = create_dataset(df_pos, features, glob_cls_name, hf,
                                         seg_len_frames, hop_seg_frames, fps,
-                                        unknown=False)
+                                        positive=True)
             labels_train.append(label_list)
             print("Positive events added...")
 
             # use of this is highly questionable!
-            label_list = create_dataset(df_unknown, features, glob_cls_name, hf,
+            df_unknown = df[(df != 'POS').all(axis=1)]
+            label_list = create_dataset(df_unknown, features, "<UNKNOWN>", hf,
                                         seg_len_frames, hop_seg_frames, fps,
-                                        unknown=True)
+                                        positive=False)
             labels_train.append(label_list)
             print("Unknown events added...")
 
@@ -327,6 +327,26 @@ def feature_transform(conf, mode):
             # idea could be to take intervals that fall outside events
             # (e.g. time between two randomly picked adjacent events)
             # should probably just take some, not all the data...
+
+            # e.g.
+            # 1. Define number of desired segments. Since segments will be
+            #    shuffled anyway, there is no need to think in terms of "events"
+            #    here.
+            # 2. Sample times randomly, and check that time, time+seg_len is not
+            #    in the df. Optional: resample invalid times until we got the
+            #    desired number.
+            # 3. Use create_dataset with NEGATIVE label to extract the data.
+            #    Changes needed: Either need to create a DataFrame, or allow
+            #    create_dataset to take start/end times directly (preferred).
+            #    Also, roll unknown/negative into global_class_name.
+            start_times, end_times = sample_negative_events(
+                500, len(features), seg_len_frames)
+            label_list = create_dataset(df_unknown, features, "<NEGATIVE>", hf,
+                                        seg_len_frames, hop_seg_frames, fps,
+                                        positive=False, start_times=start_times,
+                                        end_times=end_times)
+            labels_train.append(label_list)
+            print("Negative events added...")
 
         num_extract = len(hf['features'])
         flat_list = [item for sublist in labels_train for item in sublist]
@@ -351,8 +371,8 @@ def feature_transform(conf, mode):
                                       '_{}hz.wav'.format(conf.features.sr))
 
             print("Processing file name {}".format(audio_path))
-            hdf_eval = os.path.join(conf.path.feat_eval, feat_name)
-            hf = h5py.File(hdf_eval, 'w')
+            hdf_eval_path = os.path.join(conf.path.feat_eval, feat_name)
+            hf = h5py.File(hdf_eval_path, 'w')
 
             hf.create_dataset('mean_global', shape=(1,), maxshape=None)
             hf.create_dataset('std_dev_global', shape=(1,), maxshape=None)
@@ -399,3 +419,20 @@ def feature_transform(conf, mode):
 
     else:
         print("Invalid mode; doing nothing. Accepted are 'train' and 'eval'.")
+
+
+def sample_negative_events(num, max_time, event_len):
+    starts = []
+    ends = []
+    while len(starts) < num:
+        start_candidate = np.random.randint(max_time - event_len)
+        end_candidate = start_candidate + event_len
+        if check_if_negative(start_candidate, end_candidate):
+            starts.append(start_candidate)
+            ends.append(end_candidate)
+
+    return starts, ends
+
+
+def check_if_negative(start, end):
+    return True

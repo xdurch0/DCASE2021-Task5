@@ -42,7 +42,7 @@ def train_protonet(conf: DictConfig, index: int) -> tf.keras.callbacks.History:
     # TODO don't hardcode
     # TODO use validation set only once.........
     # size of largest class * times number of classes
-    oversampled_size = most_common * 20  # no NEG: *19
+    oversampled_size = most_common * 21  # no NEG/UNK: *19
     batch_size = conf.train.n_shot + conf.train.n_query
     steps_per_epoch = (int(oversampled_size * (1 - conf.train.test_split)) //
                        (batch_size * conf.train.k_way))

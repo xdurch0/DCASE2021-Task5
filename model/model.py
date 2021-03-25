@@ -222,6 +222,7 @@ class BaselineProtonet(tf.keras.Model):
 
         labels = tf.repeat(tf.range(n_classes, dtype=tf.int32),
                            repeats=[self.n_query])
+        labels_onehot = tf.one_hot(labels, depth=n_classes)
         if self.binary_training:
             # we need to:
             # 1. pick a random class to be the "one" (vs all others)
@@ -243,6 +244,7 @@ class BaselineProtonet(tf.keras.Model):
             prototypes = tf.stack([negative_prototype, positive_prototype])
 
             labels = tf.where(labels == chosen_class, 1, 0)
+            labels_onehot = tf.one_hot(labels, depth=2)
 
         # distance matrix
         # for each element in the n_classes*n_query x d query_set, compute
@@ -255,7 +257,7 @@ class BaselineProtonet(tf.keras.Model):
                                   axis=-1)
         logits = -1 * euclidean_dists
 
-        loss = self.compiled_loss(labels, logits,
+        loss = self.compiled_loss(labels_onehot, logits,
                                   regularization_losses=self.losses)
 
         return loss, logits, labels

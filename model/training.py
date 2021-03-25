@@ -24,7 +24,8 @@ def train_protonet(conf: DictConfig, index: int) -> tf.keras.callbacks.History:
     model = create_baseline_model(conf, print_summary=index == 0)
 
     opt = tf.optimizers.Adam(conf.train.lr)
-    loss_fn = tf.losses.SparseCategoricalCrossentropy(from_logits=True)
+    loss_fn = tf.losses.CategoricalCrossentropy(
+        from_logits=True, label_smoothing=conf.train.label_smoothing)
 
     metrics = [tf.metrics.SparseCategoricalAccuracy()]
     model.compile(optimizer=opt, loss=loss_fn, metrics=metrics)

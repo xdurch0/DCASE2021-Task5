@@ -43,6 +43,7 @@ train:
   epochs: 100
   test_split: 0.25
   binary: false
+  label_smoothing: 0.1
 model:
   dims: 2
   preprocess: mel

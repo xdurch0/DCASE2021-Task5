@@ -99,8 +99,11 @@ def create_baseline_model(conf: DictConfig,
     b4 = baseline_block(b3, 128, dims, scope="block4")
     flat = tfkl.Flatten(name="flatten")(b4)
 
-    model = BaselineProtonet(inp, flat, conf.train.n_shot,
-                             conf.train.n_query, conf.train.k_way,
+    model = BaselineProtonet(inp, flat,
+                             n_support=conf.train.n_shot,
+                             n_query=conf.train.n_query,
+                             k_way=conf.train.k_way,
+                             binary_training=conf.train.binary,
                              name="protonet")
 
     if print_summary:
@@ -127,6 +130,7 @@ class BaselineProtonet(tf.keras.Model):
                  n_support: int,
                  n_query: int,
                  k_way: Optional[int] = None,
+                 binary_training: bool = False,
                  **kwargs):
         """Thin wrapper around the Functional __init__.
 
@@ -137,12 +141,15 @@ class BaselineProtonet(tf.keras.Model):
             n_query: Size of query set.
             k_way: If given, number of classes to sample for each training step.
                    If not given, all classes will be used.
+            binary_training: If True, training will be done in a binary fashion
+                             by randomly choosing a "true" class each iteration.
 
         """
         super().__init__(inputs, outputs, **kwargs)
         self.k_way = k_way
         self.n_support = n_support
         self.n_query = n_query
+        self.binary_training = binary_training
 
     def process_batch_input(self,
                             data_batch: tuple,
@@ -213,6 +220,30 @@ class BaselineProtonet(tf.keras.Model):
         # n_classes x d
         prototypes = tf.reduce_mean(support_set, axis=1)
 
+        labels = tf.repeat(tf.range(n_classes, dtype=tf.int32),
+                           repeats=[self.n_query])
+        if self.binary_training:
+            # we need to:
+            # 1. pick a random class to be the "one" (vs all others)
+            # 2. average the prototypes for all the other classes to a single
+            #    "negative" prototype
+            # 3. modify the labels such the "one" class gets 1, others get 0
+            chosen_class = tf.random.uniform((1,), maxval=n_classes,
+                                             dtype=tf.int32)
+
+            chosen_onehot = tf.one_hot(chosen_class, depth=n_classes,
+                                       dtype=tf.bool)
+            chosen_others = tf.math.logical_not(chosen_onehot)
+
+            positive_prototype = prototypes[chosen_class]
+            negative_prototypes = tf.boolean_mask(prototypes, chosen_others,
+                                                  axis=0)
+            negative_prototype = tf.reduce_mean(negative_prototypes, axis=0)
+
+            prototypes = tf.stack([negative_prototype, positive_prototype])
+
+            labels = tf.where(labels == chosen_class, 1, 0)
+
         # distance matrix
         # for each element in the n_classes*n_query x d query_set, compute
         #  euclidean distance to each element in the n_classes x d
@@ -223,9 +254,6 @@ class BaselineProtonet(tf.keras.Model):
         euclidean_dists = tf.norm(query_set[:, None] - prototypes[None],
                                   axis=-1)
         logits = -1 * euclidean_dists
-
-        labels = tf.repeat(tf.range(n_classes, dtype=tf.int32),
-                           repeats=[self.n_query])
 
         loss = self.compiled_loss(labels, logits,
                                   regularization_losses=self.losses)

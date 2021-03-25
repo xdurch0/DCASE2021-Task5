@@ -42,6 +42,7 @@ train:
   patience: 3
   epochs: 100
   test_split: 0.25
+  binary: false
 model:
   dims: 2
   preprocess: mel

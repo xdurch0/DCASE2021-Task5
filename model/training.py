@@ -1,3 +1,6 @@
+import os
+import pickle
+
 import tensorflow as tf
 from omegaconf import DictConfig
 
@@ -49,11 +52,17 @@ def train_protonet(conf: DictConfig, index: int) -> tf.keras.callbacks.History:
     val_steps = (int(oversampled_size * conf.train.test_split) //
                  (batch_size * conf.train.k_way))
 
-    history = model.fit(train_dataset, validation_data=val_dataset,
+    history = model.fit(train_dataset,
+                        validation_data=val_dataset,
                         epochs=conf.train.epochs,
                         steps_per_epoch=steps_per_epoch,
                         validation_steps=val_steps,
                         callbacks=callbacks)
+
+    history_dict = history.history
+    with open(os.path.join(conf.path.model, "history" + str(index) + ".pkl"),
+              mode="wb") as hist_file:
+        pickle.dump(history_dict, hist_file)
 
     model.save_weights(conf.path.last_model + str(index) + ".h5")
 

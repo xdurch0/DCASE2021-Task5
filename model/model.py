@@ -159,9 +159,9 @@ class BaselineProtonet(tf.keras.Model):
 
         Parameters:
             data_batch: Tuple of data batches, one per class.
-            k_way: If given, sample this many classes randomly out of all the
-                  ones available. Note: This will replace n_classes in the
-                  output!
+            k_way: If given > 0, sample this many classes randomly out of all
+                   the ones available. Note: This will replace n_classes in the
+                   output!
 
         Returns:
             inputs_stacked: Single tensor where first dimension is
@@ -171,7 +171,7 @@ class BaselineProtonet(tf.keras.Model):
         """
         n_classes = len(data_batch)
 
-        if k_way is not None:
+        if k_way:
             inputs_stacked = tf.stack(data_batch, axis=0)
             class_picks = tf.random.shuffle(
                 tf.range(n_classes, dtype=tf.int32))[:k_way]

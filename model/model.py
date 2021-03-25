@@ -228,11 +228,11 @@ class BaselineProtonet(tf.keras.Model):
             # 2. average the prototypes for all the other classes to a single
             #    "negative" prototype
             # 3. modify the labels such the "one" class gets 1, others get 0
-            chosen_class = tf.random.uniform((1,), maxval=n_classes,
+            chosen_class = tf.random.uniform((), maxval=n_classes,
                                              dtype=tf.int32)
 
-            chosen_onehot = tf.one_hot(chosen_class, depth=n_classes,
-                                       dtype=tf.bool)
+            chosen_onehot = tf.cast(tf.one_hot(chosen_class, depth=n_classes),
+                                    tf.bool)
             chosen_others = tf.math.logical_not(chosen_onehot)
 
             positive_prototype = prototypes[chosen_class]

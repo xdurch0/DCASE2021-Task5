@@ -50,8 +50,8 @@ def main(conf: DictConfig):
         print("Done!")
 
     if conf.set.train:
-        if not os.path.isdir(conf.path.Model):
-            os.makedirs(conf.path.Model)
+        if not os.path.isdir(conf.path.model):
+            os.makedirs(conf.path.model)
 
         for index in range(conf.set.n_runs):
             print("\nTraining model #{} out of {}...".format(index + 1,

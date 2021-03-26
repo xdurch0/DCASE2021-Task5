@@ -253,9 +253,9 @@ class BaselineProtonet(tf.keras.Model):
         # result could be n_classes*n_query x n_classes
         # can broadcast prototypes over first dim of query_set and insert
         #  one axis in query_set (axis 1).
-        euclidean_dists = tf.norm(query_set[:, None] - prototypes[None],
-                                  axis=-1)
-        logits = -1 * euclidean_dists
+        sq_euclidean_dists = tf.reduce_sum(
+            (query_set[:, None] - prototypes[None])**2, axis=-1)
+        logits = -1 * sq_euclidean_dists
 
         loss = self.compiled_loss(labels_onehot, logits,
                                   regularization_losses=self.losses)

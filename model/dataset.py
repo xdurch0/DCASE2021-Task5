@@ -127,7 +127,7 @@ def split_train_data(conf: DictConfig) -> Tuple[np.ndarray, np.ndarray,
 
     """
     hdf_path = os.path.join(conf.path.feat_train, 'Mel_train.h5')
-    hdf_train = h5py.File(hdf_path, 'r+')
+    hdf_train = h5py.File(hdf_path, 'r')
     x = hdf_train['features'][()]
     labels = [s.decode() for s in hdf_train['labels'][()]]
     hdf_train.close()

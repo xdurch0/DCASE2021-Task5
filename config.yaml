@@ -4,7 +4,7 @@ set:
   features_eval: false
   train: false
   eval: false
-  n_runs: 2
+  n_runs: 50
 
 path:
   root_dir:  /project/jens/DCASE2021-Task5/Development_Set
@@ -13,10 +13,10 @@ path:
   feat_path: ${path.root_dir}/Features_${features.type}
   feat_train: ${path.feat_path}/feat_train
   feat_eval:  ${path.feat_path}/feat_eval
-  model: ${path.root_dir}/Model
+  model: ${path.root_dir}/ModelFixdistance
   best_model: ${path.model}/best_model
   last_model: ${path.model}/last_model
-  results: ${path.root_dir}/Results
+  results: ${path.root_dir}/ResultsFixdistance
 
 features:
   type: pcen_lowpass
@@ -36,14 +36,14 @@ features:
 train:
   n_shot: 5
   n_query: 55
-  k_way : 10
+  k_way : 0
   lr: 0.0001
   scheduler_gamma: 0.5
   patience: 3
   epochs: 100
   test_split: 0.25
   binary: false
-  label_smoothing: 0.1
+  label_smoothing: 0.
 model:
   dims: 2
   preprocess: mel

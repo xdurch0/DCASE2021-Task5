@@ -1,14 +1,15 @@
-import pandas as pd
 import argparse
-import os
-import json
-import numpy as np
-import csv
-import metrics
-from datetime import datetime
 import copy
-from scipy import stats
 import glob
+import json
+import os
+from datetime import datetime
+
+import numpy as np
+import pandas as pd
+from scipy import stats
+
+from .metrics import match_events
 
 MIN_EVAL_VALUE = 0.00001
 N_SHOTS = 5
@@ -64,7 +65,7 @@ def compute_tp_fp_fn(pred_events_df, ref_events_df):
     pred_1st_round = build_matrix_from_selected_rows(pred_events_df,
                                                      pred_pos_indexes)
 
-    m_pos = metrics.match_events(ref_1st_round, pred_1st_round,
+    m_pos = match_events(ref_1st_round, pred_1st_round,
                                  min_iou=MIN_IOU_TH)
     matched_ref_indexes = [ri for ri, pi in m_pos]
     matched_pred_indexes = [pi for ri, pi in m_pos]
@@ -77,7 +78,7 @@ def compute_tp_fp_fn(pred_events_df, ref_events_df):
         set(range(pred_1st_round.shape[1])) - set(matched_pred_indexes))
     pred_2nd_round = pred_1st_round[:, unmatched_pred_events]
 
-    m_unk = metrics.match_events(ref_2nd_round, pred_2nd_round,
+    m_unk = match_events(ref_2nd_round, pred_2nd_round,
                                  min_iou=MIN_IOU_TH)
 
     # print("# Positive matches between Ref and Pred :", len(m_pos))

@@ -58,24 +58,30 @@ def create_baseline_model(conf: DictConfig,
         raise ValueError("Model only understands dims of 1 or 2.")
 
     if conf.features.type == "raw":
-        inp = tf.keras.Input(shape=(None, 1))
+        time_shape = int(round(conf.features.seg_len * conf.features.sr))
+        inp = tf.keras.Input(shape=(time_shape, 1))
+
         if conf.model.preprocess == "mel":
             preprocessed = LogMel(conf.features.n_mels,
                                   conf.features.n_fft,
                                   conf.features.hop_mel,
                                   conf.features.sr,
                                   name="logmel")(inp)
+
         elif conf.model.preprocess == "sinc":
             preprocessed = SincConv(conf.features.n_mels,
                                     conf.features.n_fft,
                                     conf.features.hop_mel,
                                     padding="same",
                                     name="sinc")(inp)
+
         else:
             raise ValueError("Invalid preprocessing specified.")
 
     elif conf.features.type == "pcen_lowpass":
-        inp = tf.keras.Input(shape=(None, 2*conf.features.n_mels))
+        fps = conf.features.sr / conf.features.hop_mel
+        time_shape = int(round(conf.features.seg_len * fps))
+        inp = tf.keras.Input(shape=(time_shape, 2*conf.features.n_mels))
         preprocessed = PCENCompression(n_channels=conf.features.n_mels,
                                        gain=conf.features.gain,
                                        power=conf.features.power,
@@ -84,7 +90,9 @@ def create_baseline_model(conf: DictConfig,
                                        name="pcen_compress")(inp)
 
     else:  # PCEN or Mel
-        inp = tf.keras.Input(shape=(None, conf.features.n_mels))
+        fps = conf.features.sr / conf.features.hop_mel
+        time_shape = int(round(conf.features.seg_len * fps))
+        inp = tf.keras.Input(shape=(time_shape, conf.features.n_mels))
         preprocessed = inp
 
     if dims == 2:
@@ -253,7 +261,7 @@ class BaselineProtonet(tf.keras.Model):
         # result could be n_classes*n_query x n_classes
         # can broadcast prototypes over first dim of query_set and insert
         #  one axis in query_set (axis 1).
-        sq_euclidean_dists = tf.reduce_sum(
+        sq_euclidean_dists = tf.reduce_mean(
             (query_set[:, None] - prototypes[None])**2, axis=-1)
         logits = -1 * sq_euclidean_dists
 

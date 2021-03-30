@@ -28,7 +28,7 @@ def get_probability(positive_prototype: Union[tf.Tensor, np.array],
 
     """
     prototypes = tf.stack([positive_prototype, negative_prototype], axis=0)
-    dists = tf.reduce_sum((prototypes[None] - query_embeddings[:, None])**2,
+    dists = tf.reduce_mean((prototypes[None] - query_embeddings[:, None])**2,
                           axis=-1)
     logits = -1 * dists
 

@@ -13,13 +13,15 @@ from .dataset import dataset_eval
 
 def get_probability(positive_prototype: Union[tf.Tensor, np.array],
                     negative_prototype: Union[tf.Tensor, np.array],
-                    query_embeddings: Union[tf.Tensor, np.array]) -> np.array:
+                    query_embeddings: Union[tf.Tensor, np.array],
+                    model: tf.keras.Model) -> np.array:
     """Calculate the probability of queries belonging to the positive class.
 
     Parameters:
         positive_prototype: 1D, size d.
         negative_prototype: 1D, size d.
         query_embeddings: 2D, n x d.
+        model: Duh.
 
     Returns:
         probs_ops: 1D, size n; for each row in query_embeddings,
@@ -28,9 +30,9 @@ def get_probability(positive_prototype: Union[tf.Tensor, np.array],
 
     """
     prototypes = tf.stack([positive_prototype, negative_prototype], axis=0)
-    dists = tf.reduce_mean((prototypes[None] - query_embeddings[:, None])**2,
-                          axis=-1)
-    logits = -1 * dists
+    distances = model.compute_distance(query_embeddings, prototypes)
+
+    logits = -1 * distances
 
     probs = tf.nn.softmax(logits, axis=-1)
     probs_pos = probs[:, 0].numpy().tolist()
@@ -93,7 +95,7 @@ def evaluate_prototypes(conf: DictConfig,
         for batch in dataset_query:
             query_embeddings = model(batch)
             probability_pos = get_probability(
-                positive_prototype, negative_prototype, query_embeddings)
+                positive_prototype, negative_prototype, query_embeddings, model)
             prob_pos_iter.extend(probability_pos)
 
         probs_per_iter.append(prob_pos_iter)

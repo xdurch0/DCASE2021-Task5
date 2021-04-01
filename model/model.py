@@ -327,7 +327,8 @@ class BaselineProtonet(tf.keras.Model):
 
     @staticmethod
     def compute_distance(queries, prototypes):
-        sq_euclidean_dists = tf.reduce_mean(
-            (queries[:, None] - prototypes[None])**2, axis=-1)
+        # sq_euclidean_dists = tf.reduce_mean(
+        #     (queries[:, None] - prototypes[None])**2, axis=-1)
+        euclidean_dists = tf.norm(queries[:, None] - prototypes[None], axis=-1)
 
-        return sq_euclidean_dists
+        return euclidean_dists

@@ -105,6 +105,16 @@ def create_baseline_model(conf: DictConfig,
     b2 = baseline_block(b1, 128, dims, scope="block2")
     b3 = baseline_block(b2, 128, dims, scope="block3")
     b4 = baseline_block(b3, 128, dims, scope="block4")
+
+    if conf.model.pool == "all":
+        b4 = tfkl.GlobalAvgPool2D(name="global_pool_all")(b4)
+    elif conf.model.pool == "time":
+        b4 = tfkl.Lambda(lambda x: tf.reduce_mean(x, axis=1),
+                         name="global_pool_time")(b4)
+    elif conf.model.pool == "freqs":
+        b4 = tfkl.Lambda(lambda x: tf.reduce_mean(x, axis=2),
+                         name="global_pool_freqs")(b4)
+
     flat = tfkl.Flatten(name="flatten")(b4)
 
     model = BaselineProtonet(inp, flat,
@@ -315,3 +325,10 @@ class BaselineProtonet(tf.keras.Model):
 
         self.compiled_metrics.update_state(labels, logits)
         return {m.name: m.result() for m in self.metrics}
+
+    @staticmethod
+    def compute_distance(queries, prototypes):
+        sq_euclidean_dists = tf.reduce_mean(
+            (queries[:, None] - prototypes[None])**2, axis=-1)
+
+        return sq_euclidean_dists

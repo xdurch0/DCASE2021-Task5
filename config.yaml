@@ -47,6 +47,7 @@ train:
 model:
   dims: 2
   preprocess: mel
+  pool: none
 
 eval:
   samples_neg: 650

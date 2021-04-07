@@ -107,12 +107,12 @@ def create_baseline_model(conf: DictConfig,
     b4 = baseline_block(b3, 128, dims, scope="block4")
 
     if conf.model.pool == "all":
-        b4 = tfkl.GlobalAvgPool2D(name="global_pool_all")(b4)
+        b4 = tfkl.GlobalMaxPool2D(name="global_pool_all")(b4)
     elif conf.model.pool == "time":
-        b4 = tfkl.Lambda(lambda x: tf.reduce_mean(x, axis=1),
+        b4 = tfkl.Lambda(lambda x: tf.reduce_max(x, axis=1),
                          name="global_pool_time")(b4)
     elif conf.model.pool == "freqs":
-        b4 = tfkl.Lambda(lambda x: tf.reduce_mean(x, axis=2),
+        b4 = tfkl.Lambda(lambda x: tf.reduce_max(x, axis=2),
                          name="global_pool_freqs")(b4)
 
     flat = tfkl.Flatten(name="flatten")(b4)
@@ -120,6 +120,7 @@ def create_baseline_model(conf: DictConfig,
     model = BaselineProtonet(inp, flat,
                              n_support=conf.train.n_shot,
                              n_query=conf.train.n_query,
+                             distance_fn=conf.model.distance_fn,
                              k_way=conf.train.k_way,
                              binary_training=conf.train.binary,
                              name="protonet")
@@ -147,6 +148,7 @@ class BaselineProtonet(tf.keras.Model):
                  outputs: tf.Tensor,
                  n_support: int,
                  n_query: int,
+                 distance_fn: str,
                  k_way: Optional[int] = None,
                  binary_training: bool = False,
                  **kwargs):
@@ -157,6 +159,8 @@ class BaselineProtonet(tf.keras.Model):
             outputs: Output tensor of the model.
             n_support: Size of support set.
             n_query: Size of query set.
+            distance_fn: Identifier for distance function to use for
+                         classification.
             k_way: If given, number of classes to sample for each training step.
                    If not given, all classes will be used.
             binary_training: If True, training will be done in a binary fashion
@@ -168,6 +172,14 @@ class BaselineProtonet(tf.keras.Model):
         self.n_support = n_support
         self.n_query = n_query
         self.binary_training = binary_training
+
+        if distance_fn == "euclid":
+            self.distance_fn = lambda x, y: tf.norm(x - y, axis=-1)
+        elif distance_fn == "euclid_squared":
+            self.distance_fn = lambda x, y: tf.reduce_mean((x - y)**2, axis=-1)
+        else:
+            raise ValueError("Invalid distance_fn specified: "
+                             "{}".format(distance_fn))
 
     def process_batch_input(self,
                             data_batch: tuple,
@@ -272,7 +284,7 @@ class BaselineProtonet(tf.keras.Model):
         # can broadcast prototypes over first dim of query_set and insert
         #  one axis in query_set (axis 1).
         distances = self.compute_distance(query_set, prototypes)
-        logits = -1 * distances
+        logits = -distances
 
         loss = self.compiled_loss(labels_onehot, logits,
                                   regularization_losses=self.losses)
@@ -325,10 +337,17 @@ class BaselineProtonet(tf.keras.Model):
         self.compiled_metrics.update_state(labels, logits)
         return {m.name: m.result() for m in self.metrics}
 
-    @staticmethod
-    def compute_distance(queries, prototypes):
-        # sq_euclidean_dists = tf.reduce_mean(
-        #     (queries[:, None] - prototypes[None])**2, axis=-1)
-        euclidean_dists = tf.norm(queries[:, None] - prototypes[None], axis=-1)
+    def compute_distance(self,
+                         queries: tf.Tensor,
+                         prototypes: tf.Tensor) -> tf.Tensor:
+        """Compute distance matrix between queries and prototypes.
 
-        return euclidean_dists
+        Parameters:
+            queries: n x d.
+            prototypes: k x d.
+
+        Returns:
+            n x k distance matrix where element (i, j) is the distance between
+            query element i and prototype j.
+        """
+        return self.distance_fn(queries[:, None], prototypes[None])

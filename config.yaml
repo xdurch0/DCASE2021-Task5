@@ -48,6 +48,7 @@ model:
   dims: 2
   preprocess: mel
   pool: none
+  distance_fn: euclid
 
 eval:
   samples_neg: 650

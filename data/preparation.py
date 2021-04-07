@@ -346,7 +346,7 @@ def feature_transform(conf, mode):
             #              number of samples.
             start_times, end_times = sample_negative_events(
                 500, len(features), seg_len_frames,
-                deterministic=conf.use_all_negative)
+                deterministic=conf.features.use_all_negative)
 
             label_list = create_dataset(df_unknown,  # ignored
                                         features,

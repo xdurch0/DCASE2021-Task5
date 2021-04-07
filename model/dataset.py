@@ -82,8 +82,7 @@ def tf_dataset(conf: DictConfig) -> Tuple[tf.data.Dataset,
         Two zipped datasets and a counter of the most common class.
 
     """
-    (x_train, x_test, y_train, y_test,
-     mean, std, most_common) = split_train_data(conf)
+    x_train, x_test, y_train, y_test, most_common = split_train_data(conf)
 
     # batch_size should be support_size + query_size
     # it will be the number of examples *per class*!!
@@ -114,7 +113,7 @@ def dataset_eval(hf: h5py.File) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
 
 def split_train_data(conf: DictConfig) -> Tuple[np.ndarray, np.ndarray,
                                                 np.ndarray, np.ndarray,
-                                                np.ndarray, np.ndarray, int]:
+                                                int]:
     """Split training data into train/test and compute statistics.
 
     Parameters:
@@ -135,43 +134,16 @@ def split_train_data(conf: DictConfig) -> Tuple[np.ndarray, np.ndarray,
     y = class_to_int(labels)
 
     class_counts = Counter(y)
-    most_common = class_counts.most_common(1)[0][1]
+    most_common = max(class_counts.values())
 
-    x_train, x_test, y_train, y_test = train_test_split(
-        x, y, test_size=conf.train.test_split, random_state=12, stratify=y)
+    # using indices instead of splitting x directly may be more efficient?
+    indices = np.arange(len(x))
+    indices_train, indices_test, y_train, y_test = train_test_split(
+        indices, y,
+        test_size=conf.train.test_split,
+        random_state=12, stratify=y)
 
-    mean, std = norm_params(x_train)
+    x_train = x[indices_train]
+    x_test = x[indices_test]
 
-    return x_train, x_test, y_train, y_test, mean, std, most_common
-
-
-def feature_scale(x: np.ndarray,
-                  shift: float,
-                  scale: float) -> np.ndarray:
-    """Linear normalization of data via shift and scale.
-
-    Parameters:
-        x: Data to normalize (np array).
-        shift: "Location" that should be subtracted.
-        scale: Factor to divide by.
-
-    Returns:
-        Normalized data.
-
-    """
-    return (x - shift) / scale
-
-
-def norm_params(x: np.array) -> Tuple[np.ndarray, np.ndarray]:
-    """Return shift and scale parameters for normalization.
-
-    Arguments:
-        x: Features
-
-    Returns:
-        mean and standard deviation of x (over all dimensions).
-
-    """
-    mean = np.mean(x)
-    std = np.std(x)
-    return mean, std
+    return x_train, x_test, y_train, y_test, most_common

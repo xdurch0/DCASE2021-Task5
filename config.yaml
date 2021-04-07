@@ -2,6 +2,7 @@ set:
   resample: false
   features_train: false
   features_eval: false
+  make_tfrecord; false
   train: false
   eval: false
   n_runs: 50
@@ -32,7 +33,8 @@ features:
   bias: 2.
   power: 0.5
   eps: 1e-6
-  center: True
+  center: true
+  use_all_negative: false
 train:
   n_shot: 5
   n_query: 55

@@ -309,41 +309,54 @@ def feature_transform(conf, mode):
             print("Features extracted! Shape {}".format(features.shape))
 
             df_pos = df[(df == 'POS').any(axis=1)]
-            label_list = create_dataset(df_pos, features, glob_cls_name, hf,
-                                        seg_len_frames, hop_seg_frames, fps,
+            label_list = create_dataset(df_pos,
+                                        features,
+                                        glob_cls_name,
+                                        hf,
+                                        seg_len_frames,
+                                        hop_seg_frames,
+                                        fps,
                                         positive=True)
             labels_train.append(label_list)
             print("Positive events added...")
 
             # use of this is highly questionable!
             df_unknown = df[(df != 'POS').all(axis=1)]
-            label_list = create_dataset(df_unknown, features, "<UNKNOWN>", hf,
-                                        seg_len_frames, hop_seg_frames, fps,
+            label_list = create_dataset(df_unknown,
+                                        features,
+                                        "<UNKNOWN>",
+                                        hf,
+                                        seg_len_frames,
+                                        hop_seg_frames,
+                                        fps,
                                         positive=False)
             labels_train.append(label_list)
             print("Unknown events added...")
 
-            # TODO add "true negatives" that are not marked at all in csv
-            # idea could be to take intervals that fall outside events
-            # (e.g. time between two randomly picked adjacent events)
-            # should probably just take some, not all the data...
-
-            # e.g.
+            # negative events
             # 1. Define number of desired segments. Since segments will be
             #    shuffled anyway, there is no need to think in terms of "events"
             #    here.
             # 2. Sample times randomly, and check that time, time+seg_len is not
             #    in the df. Optional: resample invalid times until we got the
             #    desired number.
-            # 3. Use create_dataset with NEGATIVE label to extract the data.
-            #    Changes needed: Either need to create a DataFrame, or allow
-            #    create_dataset to take start/end times directly (preferred).
-            #    Also, roll unknown/negative into global_class_name.
+            # Currently: *No* check for whether it is actually a negative event.
+            # Anything is treated as negative. Mirrors how it's done in eval.
+            # Last change: Take *entire dataset* as negative -- not just some
+            #              number of samples.
             start_times, end_times = sample_negative_events(
-                500, len(features), seg_len_frames)
-            label_list = create_dataset(df_unknown, features, "<NEGATIVE>", hf,
-                                        seg_len_frames, hop_seg_frames, fps,
-                                        positive=False, start_times=start_times,
+                500, len(features), seg_len_frames,
+                deterministic=conf.use_all_negative)
+
+            label_list = create_dataset(df_unknown,  # ignored
+                                        features,
+                                        "<NEGATIVE>",
+                                        hf,
+                                        seg_len_frames,
+                                        hop_seg_frames,
+                                        fps,
+                                        positive=False,
+                                        start_times=start_times,
                                         end_times=end_times)
             labels_train.append(label_list)
             print("Negative events added...")
@@ -385,7 +398,10 @@ def feature_transform(conf, mode):
             hf['std_dev_global'][:] = std
 
             print("Creating negative dataset")
-            fill_simple(hf, "feat_neg", features, seg_len_frames,
+            fill_simple(hf,
+                        "feat_neg",
+                        features,
+                        seg_len_frames,
                         hop_seg_frames)
             num_extract_eval += len(hf['feat_neg'])
 
@@ -399,8 +415,13 @@ def feature_transform(conf, mode):
                 'feat_pos', shape=(0, seg_len_frames, n_features),
                 maxshape=(None, seg_len_frames, n_features))
 
-            fill_complex(hf["feat_pos"], start_times, end_times, features,
-                         seg_len_frames, hop_seg_frames, support_indices)
+            fill_complex(hf["feat_pos"],
+                         start_times,
+                         end_times,
+                         features,
+                         seg_len_frames,
+                         hop_seg_frames,
+                         support_indices)
 
             print("Creating query dataset")
             hf.create_dataset('start_index_query', shape=(1,), maxshape=None)
@@ -410,8 +431,12 @@ def feature_transform(conf, mode):
             # would be great to avoid this, as query data is basically part of
             # the negative (all) data. However, the offset might be slightly
             # different and so far I have not been able to get this right.
-            fill_simple(hf, "feat_query", features, seg_len_frames,
-                        hop_seg_frames, start_index=start_index_query)
+            fill_simple(hf,
+                        "feat_query",
+                        features,
+                        seg_len_frames,
+                        hop_seg_frames,
+                        start_index=start_index_query)
 
             hf.close()
 
@@ -421,11 +446,15 @@ def feature_transform(conf, mode):
         print("Invalid mode; doing nothing. Accepted are 'train' and 'eval'.")
 
 
-def sample_negative_events(num, max_time, event_len):
+def sample_negative_events(num, max_time, event_len, deterministic=False):
+    if deterministic:
+        return [0], [max_time]
+
     starts = []
     ends = []
     while len(starts) < num:
         start_candidate = np.random.randint(max_time - event_len)
+
         end_candidate = start_candidate + event_len
         if check_if_negative(start_candidate, end_candidate):
             starts.append(start_candidate)

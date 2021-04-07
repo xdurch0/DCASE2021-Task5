@@ -22,9 +22,11 @@ def train_protonet(conf: DictConfig,
         history: history object obtained by keras.fit.
 
     """
+    print("Preparing TF dataset...")
     train_dataset, val_dataset, most_common = tf_dataset(conf)
 
     for index in range(times):
+        print("\nTraining model #{} out of {}...".format(index + 1, times))
         model = create_baseline_model(conf, print_summary=index == 0)
 
         opt = tf.optimizers.Adam(conf.train.lr)

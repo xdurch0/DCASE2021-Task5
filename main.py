@@ -53,10 +53,7 @@ def main(conf: DictConfig):
         if not os.path.isdir(conf.path.model):
             os.makedirs(conf.path.model)
 
-        for index in range(conf.set.n_runs):
-            print("\nTraining model #{} out of {}...".format(index + 1,
-                                                             conf.set.n_runs))
-            train_protonet(conf, index)
+        train_protonet(conf, conf.set.n_runs)
 
     if conf.set.eval:
         if not os.path.isdir(conf.path.results):

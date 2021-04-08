@@ -344,9 +344,15 @@ def feature_transform(conf, mode):
             # Anything is treated as negative. Mirrors how it's done in eval.
             # Last change: Take *entire dataset* as negative -- not just some
             #              number of samples.
+            if conf.features.negative == "all":
+                deterministic = True
+                neg_count = 0  # dummy
+            else:
+                deterministic = False
+                neg_count = conf.features.negative
             start_times, end_times = sample_negative_events(
-                500, len(features), seg_len_frames,
-                deterministic=conf.features.use_all_negative)
+                neg_count, len(features), seg_len_frames,
+                deterministic=deterministic)
 
             label_list = create_dataset(df_unknown,  # ignored
                                         features,
@@ -463,5 +469,5 @@ def sample_negative_events(num, max_time, event_len, deterministic=False):
     return starts, ends
 
 
-def check_if_negative(start, end):
+def check_if_negative(_start, _end):
     return True

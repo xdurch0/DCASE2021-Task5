@@ -80,9 +80,9 @@ def main(conf: DictConfig):
                 print("Processing audio file : {}".format(audio_name))
 
                 hdf_eval = h5py.File(feat_file, 'r')
-
                 on_off_sets = evaluate_prototypes(conf, hdf_eval, model,
                                                   thresholds)
+                hdf_eval.close()
 
                 for thresh, (onset, offset) in on_off_sets.items():
                     name = np.repeat(audio_name, len(onset))

@@ -3,6 +3,7 @@
 """
 from typing import Tuple, Union, Optional
 
+import numpy as np
 import tensorflow as tf
 from omegaconf import DictConfig
 
@@ -351,3 +352,30 @@ class BaselineProtonet(tf.keras.Model):
             query element i and prototype j.
         """
         return self.distance_fn(queries[:, None], prototypes[None])
+
+    def get_probability(self,
+                        positive_prototype: Union[tf.Tensor, np.array],
+                        negative_prototype: Union[tf.Tensor, np.array],
+                        query_embeddings: Union[tf.Tensor, np.array]) -> np.array:
+        """Calculate the probability of queries belonging to the positive class.
+
+        Parameters:
+            positive_prototype: 1D, size d.
+            negative_prototype: 1D, size d.
+            query_embeddings: 2D, n x d.
+
+        Returns:
+            probs_ops: 1D, size n; for each row in query_embeddings,
+                       contains the probability that this query belongs to the
+                       positive class.
+
+        """
+        prototypes = tf.stack([positive_prototype, negative_prototype], axis=0)
+        distances = self.compute_distance(query_embeddings, prototypes)
+
+        logits = -distances
+
+        probs = tf.nn.softmax(logits, axis=-1)
+        probs_pos = probs[:, 0].numpy().tolist()
+
+        return probs_pos

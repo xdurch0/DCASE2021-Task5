@@ -11,35 +11,6 @@ from omegaconf import DictConfig
 from .dataset import dataset_eval
 
 
-def get_probability(positive_prototype: Union[tf.Tensor, np.array],
-                    negative_prototype: Union[tf.Tensor, np.array],
-                    query_embeddings: Union[tf.Tensor, np.array],
-                    model: tf.keras.Model) -> np.array:
-    """Calculate the probability of queries belonging to the positive class.
-
-    Parameters:
-        positive_prototype: 1D, size d.
-        negative_prototype: 1D, size d.
-        query_embeddings: 2D, n x d.
-        model: Duh.
-
-    Returns:
-        probs_ops: 1D, size n; for each row in query_embeddings,
-                   contains the probability that this query belongs to the
-                   positive class.
-
-    """
-    prototypes = tf.stack([positive_prototype, negative_prototype], axis=0)
-    distances = model.compute_distance(query_embeddings, prototypes)
-
-    logits = -1 * distances
-
-    probs = tf.nn.softmax(logits, axis=-1)
-    probs_pos = probs[:, 0].numpy().tolist()
-
-    return probs_pos
-
-
 def evaluate_prototypes(conf: DictConfig,
                         hdf_eval: h5py.File,
                         model: tf.keras.Model,
@@ -57,16 +28,27 @@ def evaluate_prototypes(conf: DictConfig,
         dict mapping thresholds to onsets and offsets of events.
 
     """
-    start_index_query = hdf_eval['start_index_query'][()][0]
-    if conf.features.type == "raw":
-        hop_seg_samples = int(conf.features.hop_seg * conf.features.sr)
-        start_time_query = start_index_query / conf.features.sr
-    else:
-        hop_seg_samples = int(conf.features.hop_seg * conf.features.sr //
-                              conf.features.hop_mel)
-        start_time_query = (start_index_query * conf.features.hop_mel /
-                            conf.features.sr)
+    probabilities = get_probabilities(conf, hdf_eval, model)
 
+    print("Ok, trying {} thresholds...".format(len(thresholds)))
+    return get_events(probabilities, thresholds, hdf_eval, conf)
+
+
+def get_probabilities(conf: DictConfig,
+                      hdf_eval: h5py.File,
+                      model: tf.keras.Model) -> np.ndarray:
+    """Run several iterations of estimating event probabilities.
+
+    Parameters:
+        conf: hydra config object.
+        hdf_eval: Open hd5 file containing positive, negative and query
+                  features.
+        model: The model to evaluate.
+
+    Returns:
+        Event probability at each segment of the query set.
+
+    """
     x_pos, x_neg, x_query = dataset_eval(hdf_eval)
 
     dataset_query = tf.data.Dataset.from_tensor_slices(x_query)
@@ -94,24 +76,65 @@ def evaluate_prototypes(conf: DictConfig,
 
         for batch in dataset_query:
             query_embeddings = model(batch)
-            probability_pos = get_probability(
-                positive_prototype, negative_prototype, query_embeddings, model)
+            probability_pos = model.get_probability(
+                positive_prototype, negative_prototype, query_embeddings)
             prob_pos_iter.extend(probability_pos)
 
         probs_per_iter.append(prob_pos_iter)
-    prob_final = np.mean(np.array(probs_per_iter), axis=0)
 
-    print("Ok, trying {} thresholds...".format(len(thresholds)))
+    return np.mean(np.array(probs_per_iter), axis=0)
+
+
+def threshold_probabilities(probabilities, threshold):
+    """Threshold event probabilities to 0/1.
+
+    Parameters:
+        probabilities: Event probabilities as estimated by a model.
+        threshold: Value above which we recognize an event.
+    """
     change_kernel = np.array([1, -1])
+    prob_thresh = np.where(probabilities > threshold, 1, 0)
+
+    changes = np.convolve(change_kernel, prob_thresh)
+
+    onset_frames = np.where(changes == 1)[0]
+    offset_frames = np.where(changes == -1)[0]
+    assert len(offset_frames) == len(onset_frames)
+
+    return onset_frames, offset_frames
+
+
+def get_events(prob_final: np.ndarray,
+               thresholds: Sequence,
+               hdf_eval: h5py.File,
+               conf: DictConfig) -> dict:
+    """Threshold event probabilities and get event onsets/offsets.
+
+    Parameters:
+        prob_final: Event probabilites for consecutive segments.
+        thresholds: 1D container with all "positive" thresholds to try.
+        hdf_eval: Open hd5 file containing positive, negative and query
+                  features.
+        conf: hydra config object.
+
+    Returns:
+        dict mapping thresholds to onsets and offsets of events.
+
+    """
+    start_index_query = hdf_eval['start_index_query'][()][0]
+    if conf.features.type == "raw":
+        hop_seg_samples = int(conf.features.hop_seg * conf.features.sr)
+        start_time_query = start_index_query / conf.features.sr
+    else:
+        hop_seg_samples = int(conf.features.hop_seg * conf.features.sr //
+                              conf.features.hop_mel)
+        start_time_query = (start_index_query * conf.features.hop_mel /
+                            conf.features.sr)
+
     on_off_sets = dict()
     for threshold in thresholds:
-        prob_thresh = np.where(prob_final > threshold, 1, 0)
-
-        # prob_pos_final = prob_final * prob_thresh
-        changes = np.convolve(change_kernel, prob_thresh)
-
-        onset_frames = np.where(changes == 1)[0]
-        offset_frames = np.where(changes == -1)[0]
+        onset_frames, offset_frames = threshold_probabilities(prob_final,
+                                                              threshold)
 
         if conf.features.type == "raw":
             onset_times = ((onset_frames + 1) * hop_seg_samples /
@@ -129,7 +152,6 @@ def evaluate_prototypes(conf: DictConfig,
                             conf.features.hop_mel / conf.features.sr)
         offset_times = offset_times + start_time_query
 
-        assert len(onset_times) == len(offset_times)
         on_off_sets[threshold] = (onset_times, offset_times)
 
     return on_off_sets

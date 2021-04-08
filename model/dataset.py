@@ -63,7 +63,8 @@ def per_class_dataset(x: np.ndarray,
     for class_ind in range(n_classes):
         x_class = x[y == class_ind]
         class_data = tf.data.Dataset.from_tensor_slices(x_class)
-        class_data = class_data.shuffle(len(x_class)).repeat()
+        class_data = class_data.shuffle(np.maximum([len(x_class), 10000]))
+        class_data = class_data.repeat()
         datasets.append(class_data)
 
     # may be able to do this with interleave once I understand how it works lol
@@ -106,7 +107,6 @@ def dataset_eval(hf: h5py.File) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:
     x_pos = hf['feat_pos'][()]
     x_neg = hf['feat_neg'][()]
     x_query = hf["feat_query"][()]
-    hf.close()
 
     return x_pos, x_neg, x_query
 

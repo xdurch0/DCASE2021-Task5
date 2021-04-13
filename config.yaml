@@ -14,10 +14,10 @@ path:
   feat_path: ${path.root_dir}/FeaturesN500_${features.type}
   feat_train: ${path.feat_path}/feat_train
   feat_eval:  ${path.feat_path}/feat_eval
-  model: ${path.root_dir}/ModelAlldata
+  model: ${path.root_dir}/ModelN500
   best_model: ${path.model}/best_model
   last_model: ${path.model}/last_model
-  results: ${path.root_dir}/ResultsAlldata
+  results: ${path.root_dir}/ResultsN500
 
 features:
   type: pcen_lowpass

@@ -63,7 +63,7 @@ def per_class_dataset(x: np.ndarray,
     for class_ind in range(n_classes):
         x_class = x[y == class_ind]
         class_data = tf.data.Dataset.from_tensor_slices(x_class)
-        class_data = class_data.shuffle(np.maximum([len(x_class), 10000]))
+        class_data = class_data.shuffle(np.maximum(len(x_class), 10000))
         class_data = class_data.repeat()
         datasets.append(class_data)
 

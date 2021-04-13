@@ -344,12 +344,12 @@ def feature_transform(conf, mode):
             # Anything is treated as negative. Mirrors how it's done in eval.
             # Last change: Take *entire dataset* as negative -- not just some
             #              number of samples.
-            if conf.features.negative == "all":
+            if conf.features.use_negative == "all":
                 deterministic = True
                 neg_count = 0  # dummy
             else:
                 deterministic = False
-                neg_count = conf.features.negative
+                neg_count = conf.features.use_negative
             start_times, end_times = sample_negative_events(
                 neg_count, len(features), seg_len_frames,
                 deterministic=deterministic)

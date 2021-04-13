@@ -1,7 +1,7 @@
 """Functions for evaluating trained models.
 
 """
-from typing import Union, Sequence
+from typing import Tuple, Sequence
 
 import h5py
 import numpy as np
@@ -85,12 +85,16 @@ def get_probabilities(conf: DictConfig,
     return np.mean(np.array(probs_per_iter), axis=0)
 
 
-def threshold_probabilities(probabilities, threshold):
+def threshold_probabilities(probabilities: np.ndarray,
+                            threshold: float) -> Tuple[np.ndarray, np.ndarray]:
     """Threshold event probabilities to 0/1.
 
     Parameters:
         probabilities: Event probabilities as estimated by a model.
         threshold: Value above which we recognize an event.
+
+    Returns:
+        Two arrays with frame indices of onsets and offsets.
     """
     change_kernel = np.array([1, -1])
     prob_thresh = np.where(probabilities > threshold, 1, 0)
@@ -104,14 +108,14 @@ def threshold_probabilities(probabilities, threshold):
     return onset_frames, offset_frames
 
 
-def get_events(prob_final: np.ndarray,
+def get_events(probabilities: np.ndarray,
                thresholds: Sequence,
                hdf_eval: h5py.File,
                conf: DictConfig) -> dict:
     """Threshold event probabilities and get event onsets/offsets.
 
     Parameters:
-        prob_final: Event probabilites for consecutive segments.
+        probabilities: Event probabilities for consecutive segments.
         thresholds: 1D container with all "positive" thresholds to try.
         hdf_eval: Open hd5 file containing positive, negative and query
                   features.
@@ -133,7 +137,7 @@ def get_events(prob_final: np.ndarray,
 
     on_off_sets = dict()
     for threshold in thresholds:
-        onset_frames, offset_frames = threshold_probabilities(prob_final,
+        onset_frames, offset_frames = threshold_probabilities(probabilities,
                                                               threshold)
 
         if conf.features.type == "raw":

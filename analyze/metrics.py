@@ -1,5 +1,6 @@
 import os
-from typing import Optional
+import pickle
+from typing import Optional, Tuple
 
 import numpy as np
 from matplotlib import pyplot as plt
@@ -53,7 +54,8 @@ def get_classification_metrics(conf: DictConfig,
     return metrics
 
 
-def plot_metrics(metrics, thresholds=np.around(np.linspace(0., 1., 101), 2)):
+def plot_metrics(metrics: dict,
+                 thresholds: np.ndarray = np.around(np.linspace(0., 1., 101), 2)):
     all_fscores = metrics["fscores"]
     all_precisions = metrics["precisions"]
     all_recalls = metrics["recalls"]
@@ -121,3 +123,45 @@ def plot_metrics(metrics, thresholds=np.around(np.linspace(0., 1., 101), 2)):
     # plt.legend()
     plt.title("Fscore")
     plt.show()
+
+
+def get_precision_dropoff_points(all_precisions: list,
+                                 lookahead: int = 1,
+                                 thresh: float = 0.3) -> list:
+    dropoff_points = []
+    for curve_ind, prec_curve in enumerate(all_precisions):
+        found_point = False
+        for ind in range(len(prec_curve) - lookahead):
+            val = prec_curve[ind]
+            next_val = prec_curve[ind + lookahead]
+
+            if val - next_val > thresh:
+                dropoff_points.append(ind)
+                found_point = True
+                break
+        if not found_point:
+            print("WARNING!! No point found for curve number", curve_ind)
+    return dropoff_points
+
+
+def get_measures_from_histories(conf: DictConfig) -> Tuple[list, list, list]:
+    n_models = conf.set.n_runs
+    epoch_counts = []
+    best_val_accs = []
+    best_val_losses = []
+
+    for index in range(n_models):
+        path = os.path.join(conf.path.model, "history" + str(index) + ".pkl")
+
+        with open(path, "rb") as history_file:
+            history = pickle.load(history_file)
+
+        n_epochs = len(history["loss"])
+        best_val_acc = max(history["val_sparse_categorical_accuracy"])
+        best_val_loss = min(history["val_loss"])
+
+        epoch_counts.append(n_epochs)
+        best_val_accs.append(best_val_acc)
+        best_val_losses.append(best_val_loss)
+
+    return epoch_counts, best_val_accs, best_val_losses

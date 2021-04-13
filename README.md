@@ -66,6 +66,7 @@ Usage is "almost" the same.
 | epochs | Maximum number of epochs to train.
 | test_split | Fraction of data to hold out for "test data" (checking overfitting during training).
 | binary | If true, each episode one class is randomly chosen as "positive" and all others receive a "negative" label.
+| cycle_binary If true, binary training will cycle through classes in each batch, picking each class as positive once and averaging results. No effect if binary is false.
 | label_smoothing | Apply this amount of label smoothing to the cross-entropy loss.
 
 ### model

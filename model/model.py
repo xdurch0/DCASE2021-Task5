@@ -124,6 +124,7 @@ def create_baseline_model(conf: DictConfig,
                              distance_fn=conf.model.distance_fn,
                              k_way=conf.train.k_way,
                              binary_training=conf.train.binary,
+                             cycle_binary=conf.train.cycle_binary,
                              name="protonet")
 
     if print_summary:
@@ -152,6 +153,7 @@ class BaselineProtonet(tf.keras.Model):
                  distance_fn: str,
                  k_way: Optional[int] = None,
                  binary_training: bool = False,
+                 cycle_binary: bool = False,
                  **kwargs):
         """Thin wrapper around the Functional __init__.
 
@@ -166,6 +168,11 @@ class BaselineProtonet(tf.keras.Model):
                    If not given, all classes will be used.
             binary_training: If True, training will be done in a binary fashion
                              by randomly choosing a "true" class each iteration.
+            cycle_binary: If True, in binary training, instead of choosing one
+                          class at random, each batch will cycle through picking
+                          each class as "positive" in turn, averaging the
+                          results in a single loss. Has no effect if
+                          binary_training is False.
 
         """
         super().__init__(inputs, outputs, **kwargs)
@@ -173,6 +180,7 @@ class BaselineProtonet(tf.keras.Model):
         self.n_support = n_support
         self.n_query = n_query
         self.binary_training = binary_training
+        self.cycle_binary = cycle_binary
 
         if distance_fn == "euclid":
             self.distance_fn = lambda x, y: tf.norm(x - y, axis=-1)
@@ -254,38 +262,64 @@ class BaselineProtonet(tf.keras.Model):
         labels = tf.repeat(tf.range(n_classes, dtype=tf.int32),
                            repeats=[self.n_query])
         labels_onehot = tf.one_hot(labels, depth=n_classes)
+
         if self.binary_training:
-            # we need to:
-            # 1. pick a random class to be the "one" (vs all others)
-            # 2. average the prototypes for all the other classes to a single
-            #    "negative" prototype
-            # 3. modify the labels such the "one" class gets 1, others get 0
-            chosen_class = tf.random.uniform((), maxval=n_classes,
-                                             dtype=tf.int32)
+            if self.cycle_binary:
+                chosen_classes = tf.range(n_classes, dtype=tf.int32)
+            else:
+                chosen_classes = tf.random.uniform((1,), maxval=n_classes,
+                                                   dtype=tf.int32)
 
-            chosen_onehot = tf.cast(tf.one_hot(chosen_class, depth=n_classes),
-                                    tf.bool)
-            chosen_others = tf.math.logical_not(chosen_onehot)
+            array_size = n_classes if self.cycle_binary else 1
+            total_logits = tf.TensorArray(tf.float32, size=array_size)
+            total_labels = tf.TensorArray(tf.int32, size=array_size)
+            total_labels_onehot = tf.TensorArray(tf.float32, size=array_size)
 
-            positive_prototype = prototypes[chosen_class]
-            negative_prototypes = tf.boolean_mask(prototypes, chosen_others,
-                                                  axis=0)
-            negative_prototype = tf.reduce_mean(negative_prototypes, axis=0)
+            for chosen_class in chosen_classes:
+                # we need to:
+                # 1. pick a random class to be the "one" (vs all others)
+                # 2. average the prototypes for all the other classes to a
+                #    single "negative" prototype
+                # 3. modify the labels such the "one" class gets 1, others get 0
 
-            prototypes = tf.stack([negative_prototype, positive_prototype])
+                chosen_onehot = tf.cast(
+                    tf.one_hot(chosen_class, depth=n_classes), tf.bool)
+                chosen_others = tf.math.logical_not(chosen_onehot)
 
-            labels = tf.where(labels == chosen_class, 1, 0)
-            labels_onehot = tf.one_hot(labels, depth=2)
+                positive_prototype = prototypes[chosen_class]
+                negative_prototypes = tf.boolean_mask(prototypes, chosen_others,
+                                                      axis=0)
+                # since all classes appear the same number of times, we can
+                # compute the overall prototype as mean of means
+                negative_prototype = tf.reduce_mean(negative_prototypes, axis=0)
 
-        # distance matrix
-        # for each element in the n_classes*n_query x d query_set, compute
-        #  euclidean distance to each element in the n_classes x d
-        #  prototypes
-        # result could be n_classes*n_query x n_classes
-        # can broadcast prototypes over first dim of query_set and insert
-        #  one axis in query_set (axis 1).
-        distances = self.compute_distance(query_set, prototypes)
-        logits = -distances
+                prototypes = tf.stack([negative_prototype, positive_prototype])
+
+                labels = tf.where(labels == chosen_class, 1, 0)
+                labels_onehot = tf.one_hot(labels, depth=2)
+
+                distances = self.compute_distance(query_set, prototypes)
+                logits = -distances
+
+                write_index = chosen_class if self.cycle_binary else 0
+                total_logits = total_logits.write(write_index, logits)
+                total_labels = total_labels.write(write_index, labels)
+                total_labels_onehot = total_labels_onehot.write(write_index,
+                                                                labels_onehot)
+
+            logits = total_logits.concat()
+            labels = total_labels.concat()
+            labels_onehot = total_labels_onehot.concat()
+
+        else:
+            # distance matrix
+            # for each element in the n_classes*n_query x d query_set, compute
+            #  distance to each element in the n_classes x d prototypes
+            # result could be n_classes*n_query x n_classes
+            # can broadcast prototypes over first dim of query_set and insert
+            #  one axis in query_set (axis 1).
+            distances = self.compute_distance(query_set, prototypes)
+            logits = -distances
 
         loss = self.compiled_loss(labels_onehot, logits,
                                   regularization_losses=self.losses)
@@ -372,7 +406,6 @@ class BaselineProtonet(tf.keras.Model):
         """
         prototypes = tf.stack([positive_prototype, negative_prototype], axis=0)
         distances = self.compute_distance(query_embeddings, prototypes)
-
         logits = -distances
 
         probs = tf.nn.softmax(logits, axis=-1)

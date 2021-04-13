@@ -11,7 +11,7 @@ path:
   root_dir:  /project/jens/DCASE2021-Task5/Development_Set
   train_dir: ${path.root_dir}/Training_Set
   eval_dir:  ${path.root_dir}/Validation_Set
-  feat_path: ${path.root_dir}/FeaturesAll_${features.type}
+  feat_path: ${path.root_dir}/FeaturesN500_${features.type}
   feat_train: ${path.feat_path}/feat_train
   feat_eval:  ${path.feat_path}/feat_eval
   model: ${path.root_dir}/ModelAlldata
@@ -34,7 +34,7 @@ features:
   power: 0.5
   eps: 1e-6
   center: true
-  use_all_negative: true
+  use_negative: 500
 train:
   n_shot: 5
   n_query: 55
@@ -45,6 +45,7 @@ train:
   epochs: 100
   test_split: 0.25
   binary: false
+  cycle_binary: false
   label_smoothing: 0.
 model:
   dims: 2

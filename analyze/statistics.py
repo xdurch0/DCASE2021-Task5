@@ -6,8 +6,14 @@ import pandas as pd
 from omegaconf import DictConfig
 
 
-def get_event_fractions(conf: DictConfig):
-    meta_path = conf.path.train_dir
+def get_event_fractions(conf: DictConfig, subset="training"):
+    if subset == "training":
+        meta_path = conf.path.train_dir
+    elif subset == "validation":
+        meta_path = conf.path.eval_dir
+    else:
+        raise ValueError("Invalid dataset specified!")
+
     length_total_all_files = 0
     total_event_duration_all_files = 0
     n_events_total = 0

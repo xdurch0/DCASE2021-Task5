@@ -34,7 +34,8 @@ def train_protonet(conf: DictConfig,
             from_logits=True, label_smoothing=conf.train.label_smoothing)
 
         metrics = [tf.metrics.SparseCategoricalAccuracy()]
-        model.compile(optimizer=opt, loss=loss_fn, metrics=metrics)
+        model.compile(optimizer=opt, loss=loss_fn, metrics=metrics,
+                      run_eagerly=not conf.train.binary)
 
         callback_lr = tf.keras.callbacks.ReduceLROnPlateau(
             factor=conf.train.scheduler_gamma,
@@ -48,19 +49,8 @@ def train_protonet(conf: DictConfig,
             save_weights_only=True, save_best_only=True)
         callbacks = [callback_lr, checkpoints, early_stopping]
 
-        # TODO don't hardcode
-        # TODO use validation set only once.........
-        # size of largest class * times number of classes
-        oversampled_size = most_common * 21  # no NEG/UNK: *19
-        n_classes = conf.train.k_way if conf.train.k_way else 21
-        batch_size = conf.train.n_shot + conf.train.n_query
-        #steps_per_epoch = (int(oversampled_size * (1 - conf.train.test_split)) //
-        #                   (batch_size * n_classes))
         steps_per_epoch = 100
-        #val_steps = (int(oversampled_size * conf.train.test_split) //
-        #             (batch_size * n_classes))
         val_steps = 100
-
         history = model.fit(train_dataset,
                             validation_data=val_dataset,
                             epochs=conf.train.epochs,
@@ -69,8 +59,9 @@ def train_protonet(conf: DictConfig,
                             callbacks=callbacks)
 
         history_dict = history.history
-        with open(os.path.join(conf.path.model, "history" + str(index) + ".pkl"),
-                  mode="wb") as hist_file:
+        with open(
+                os.path.join(conf.path.model, "history" + str(index) + ".pkl"),
+                mode="wb") as hist_file:
             pickle.dump(history_dict, hist_file)
 
         model.save_weights(conf.path.last_model + str(index) + ".h5")

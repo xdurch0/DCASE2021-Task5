@@ -293,12 +293,13 @@ class BaselineProtonet(tf.keras.Model):
                 # compute the overall prototype as mean of means
                 negative_prototype = tf.reduce_mean(negative_prototypes, axis=0)
 
-                prototypes = tf.stack([negative_prototype, positive_prototype])
+                binary_prototypes = tf.stack([negative_prototype,
+                                              positive_prototype])
 
                 labels = tf.where(labels == chosen_class, 1, 0)
                 labels_onehot = tf.one_hot(labels, depth=2)
 
-                distances = self.compute_distance(query_set, prototypes)
+                distances = self.compute_distance(query_set, binary_prototypes)
                 logits = -distances
 
                 write_index = chosen_class if self.cycle_binary else 0
@@ -388,9 +389,9 @@ class BaselineProtonet(tf.keras.Model):
         return self.distance_fn(queries[:, None], prototypes[None])
 
     def get_probability(self,
-                        positive_prototype: Union[tf.Tensor, np.array],
-                        negative_prototype: Union[tf.Tensor, np.array],
-                        query_embeddings: Union[tf.Tensor, np.array]) -> np.array:
+                        positive_prototype: Union[tf.Tensor, np.ndarray],
+                        negative_prototype: Union[tf.Tensor, np.ndarray],
+                        query_embeddings: Union[tf.Tensor, np.ndarray]) -> list:
         """Calculate the probability of queries belonging to the positive class.
 
         Parameters:

@@ -108,7 +108,7 @@ def plot_metrics(metrics: dict,
 
         plt.plot([0, 1], [all_maxfs[ind], all_maxfs[ind]], "--",
                  label="best fscore", alpha=0.2, c=col)
-        plt.plot([all_best_threshs[ind], all_best_threshs[ind]], "--",
+        plt.plot([all_best_threshs[ind], all_best_threshs[ind]], [0, 1], "-.",
                  label="best threshold", alpha=0.2, c=col)
 
     plt.plot([0.5, 0.5], [0, 1], "k-.", alpha=0.2)

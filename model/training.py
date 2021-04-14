@@ -4,6 +4,7 @@ import pickle
 import tensorflow as tf
 from omegaconf import DictConfig
 
+from .callbacks import ConfusionMatrix
 from .dataset import tf_dataset
 from .model import create_baseline_model
 
@@ -35,6 +36,9 @@ def train_protonet(conf: DictConfig,
             from_logits=True, label_smoothing=conf.train.label_smoothing)
 
         metrics = [tf.metrics.SparseCategoricalAccuracy()]
+        if conf.train.k_way == 0 or conf.train.binary:
+            metrics.append(ConfusionMatrix(name="confusion_matrix"))
+
         model.compile(optimizer=opt, loss=loss_fn, metrics=metrics,
                       run_eagerly=conf.train.binary)
 

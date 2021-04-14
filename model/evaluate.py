@@ -14,7 +14,7 @@ from .dataset import dataset_eval
 def evaluate_prototypes(conf: DictConfig,
                         hdf_eval: h5py.File,
                         model: tf.keras.Model,
-                        thresholds: Sequence) -> dict:
+                        thresholds: Sequence) -> Tuple[dict, np.ndarray]:
     """Run the evaluation for a single dataset.
 
     Parameters:
@@ -31,7 +31,7 @@ def evaluate_prototypes(conf: DictConfig,
     probabilities = get_probabilities(conf, hdf_eval, model)
 
     print("Ok, trying {} thresholds...".format(len(thresholds)))
-    return get_events(probabilities, thresholds, hdf_eval, conf)
+    return get_events(probabilities, thresholds, hdf_eval, conf), probabilities
 
 
 def get_probabilities(conf: DictConfig,

@@ -80,8 +80,8 @@ def main(conf: DictConfig):
                 print("Processing audio file : {}".format(audio_name))
 
                 hdf_eval = h5py.File(feat_file, 'r')
-                on_off_sets = evaluate_prototypes(conf, hdf_eval, model,
-                                                  thresholds)
+                on_off_sets, probs = evaluate_prototypes(conf, hdf_eval, model,
+                                                         thresholds)
                 hdf_eval.close()
 
                 for thresh, (onset, offset) in on_off_sets.items():
@@ -89,6 +89,10 @@ def main(conf: DictConfig):
                     name_dict[thresh] = np.append(name_dict[thresh], name)
                     onset_dict[thresh] = np.append(onset_dict[thresh], onset)
                     offset_dict[thresh] = np.append(offset_dict[thresh], offset)
+
+                probs_path = os.path.join(conf.path.results,
+                                          "probs{}".format(index))
+                np.save(probs_path, probs)
 
             print("Writing {} files...".format(len(thresholds)))
             for thresh in thresholds:

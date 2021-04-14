@@ -14,10 +14,10 @@ path:
   feat_path: ${path.root_dir}/FeaturesN500_${features.type}
   feat_train: ${path.feat_path}/feat_train
   feat_eval:  ${path.feat_path}/feat_eval
-  model: ${path.root_dir}/ModelN500_BN_new
+  model: ${path.root_dir}/ModelN500
   best_model: ${path.model}/best_model
   last_model: ${path.model}/last_model
-  results: ${path.root_dir}/ResultsN500_BN_new
+  results: ${path.root_dir}/ResultsN500
 
 features:
   type: pcen_lowpass
@@ -44,7 +44,7 @@ train:
   patience: 3
   epochs: 100
   test_split: 0.25
-  binary: true
+  binary: false
   cycle_binary: false
   label_smoothing: 0.
 model:

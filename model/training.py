@@ -27,6 +27,7 @@ def train_protonet(conf: DictConfig,
 
     for index in range(times):
         print("\nTraining model #{} out of {}...".format(index + 1, times))
+        tf.keras.backend.clear_session()
         model = create_baseline_model(conf, print_summary=index == 0)
 
         opt = tf.optimizers.Adam(conf.train.lr)
@@ -35,7 +36,7 @@ def train_protonet(conf: DictConfig,
 
         metrics = [tf.metrics.SparseCategoricalAccuracy()]
         model.compile(optimizer=opt, loss=loss_fn, metrics=metrics,
-                      run_eagerly=not conf.train.binary)
+                      run_eagerly=conf.train.binary)
 
         callback_lr = tf.keras.callbacks.ReduceLROnPlateau(
             factor=conf.train.scheduler_gamma,

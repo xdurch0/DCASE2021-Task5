@@ -37,10 +37,12 @@ def train_protonet(conf: DictConfig,
 
         metrics = [tf.metrics.SparseCategoricalAccuracy()]
         if conf.train.k_way == 0 or conf.train.binary:
-            metrics.append(ConfusionMatrix(name="confusion_matrix"))
+            metrics.append(ConfusionMatrix(
+                n_classes=2 if conf.train.binary else 21,  # ugh
+                name="confusion_matrix"))
 
         model.compile(optimizer=opt, loss=loss_fn, metrics=metrics,
-                      run_eagerly=conf.train.binary)
+                      run_eagerly=conf.train.cycle_binary)
 
         callback_lr = tf.keras.callbacks.ReduceLROnPlateau(
             factor=conf.train.scheduler_gamma,

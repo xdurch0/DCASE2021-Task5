@@ -190,6 +190,14 @@ class BaselineProtonet(tf.keras.Model):
             raise ValueError("Invalid distance_fn specified: "
                              "{}".format(distance_fn))
 
+        if binary_training:
+            if cycle_binary:
+                self.logit_fn = self.cycle_binary_logit_fn
+            else:
+                self.logit_fn = self.binary_logit_fn
+        else:
+            self.logit_fn = self.multiclass_logit_fn
+
     def process_batch_input(self,
                             data_batch: tuple,
                             k_way: Union[int, None] = None) -> Tuple[tf.Tensor,
@@ -261,66 +269,11 @@ class BaselineProtonet(tf.keras.Model):
 
         labels = tf.repeat(tf.range(n_classes, dtype=tf.int32),
                            repeats=[self.n_query])
-        labels_onehot = tf.one_hot(labels, depth=n_classes)
 
-        if self.binary_training:
-            if self.cycle_binary:
-                chosen_classes = tf.range(n_classes, dtype=tf.int32)
-            else:
-                chosen_classes = tf.random.uniform((1,), maxval=n_classes,
-                                                   dtype=tf.int32)
+        logits, labels = self.logit_fn(query_set, prototypes, labels,
+                                       n_classes=n_classes)
 
-            array_size = n_classes if self.cycle_binary else 1
-            total_logits = tf.TensorArray(tf.float32, size=array_size)
-            total_labels = tf.TensorArray(tf.int32, size=array_size)
-            total_labels_onehot = tf.TensorArray(tf.float32, size=array_size)
-
-            for chosen_class in chosen_classes:
-                # we need to:
-                # 1. pick a random class to be the "one" (vs all others)
-                # 2. average the prototypes for all the other classes to a
-                #    single "negative" prototype
-                # 3. modify the labels such the "one" class gets 1, others get 0
-
-                chosen_onehot = tf.cast(
-                    tf.one_hot(chosen_class, depth=n_classes), tf.bool)
-                chosen_others = tf.math.logical_not(chosen_onehot)
-
-                positive_prototype = prototypes[chosen_class]
-                negative_prototypes = tf.boolean_mask(prototypes, chosen_others,
-                                                      axis=0)
-                # since all classes appear the same number of times, we can
-                # compute the overall prototype as mean of means
-                negative_prototype = tf.reduce_mean(negative_prototypes, axis=0)
-
-                binary_prototypes = tf.stack([negative_prototype,
-                                              positive_prototype])
-
-                labels = tf.where(labels == chosen_class, 1, 0)
-                labels_onehot = tf.one_hot(labels, depth=2)
-
-                distances = self.compute_distance(query_set, binary_prototypes)
-                logits = -distances
-
-                write_index = chosen_class if self.cycle_binary else 0
-                total_logits = total_logits.write(write_index, logits)
-                total_labels = total_labels.write(write_index, labels)
-                total_labels_onehot = total_labels_onehot.write(write_index,
-                                                                labels_onehot)
-
-            logits = total_logits.concat()
-            labels = total_labels.concat()
-            labels_onehot = total_labels_onehot.concat()
-
-        else:
-            # distance matrix
-            # for each element in the n_classes*n_query x d query_set, compute
-            #  distance to each element in the n_classes x d prototypes
-            # result could be n_classes*n_query x n_classes
-            # can broadcast prototypes over first dim of query_set and insert
-            #  one axis in query_set (axis 1).
-            distances = self.compute_distance(query_set, prototypes)
-            logits = -distances
+        labels_onehot = tf.one_hot(labels, depth=tf.reduce_max(labels) + 1)
 
         loss = self.compiled_loss(labels_onehot, logits,
                                   regularization_losses=self.losses)
@@ -413,3 +366,74 @@ class BaselineProtonet(tf.keras.Model):
         probs_pos = probs[:, 0].numpy().tolist()
 
         return probs_pos
+
+    def multiclass_logit_fn(self,
+                            query_set: tf.Tensor,
+                            prototypes: tf.Tensor,
+                            labels: tf.Tensor,
+                            **_kwargs) -> Tuple[tf.Tensor, tf.Tensor]:
+        """Logits computation for "regular" multi-class training."""
+        distances = self.compute_distance(query_set, prototypes)
+        logits = -distances
+
+        return logits, labels
+
+    def binary_logit_fn_core(self,
+                             query_set: tf.Tensor,
+                             prototypes: tf.Tensor,
+                             labels: tf.Tensor,
+                             n_classes: int,
+                             chosen_class: int) -> Tuple[tf.Tensor, tf.Tensor]:
+        chosen_onehot = tf.cast(
+            tf.one_hot(chosen_class, depth=n_classes), tf.bool)
+        chosen_others = tf.math.logical_not(chosen_onehot)
+
+        positive_prototype = prototypes[chosen_class]
+        negative_prototypes = tf.boolean_mask(prototypes, chosen_others,
+                                              axis=0)
+        # since all classes appear the same number of times, we can
+        # compute the overall prototype as mean of means
+        negative_prototype = tf.reduce_mean(negative_prototypes, axis=0)
+
+        binary_prototypes = tf.stack([negative_prototype,
+                                      positive_prototype])
+
+        labels = tf.where(labels == chosen_class, 1, 0)
+
+        distances = self.compute_distance(query_set, binary_prototypes)
+        logits = -distances
+
+        return logits, labels
+
+    def binary_logit_fn(self,
+                        query_set: tf.Tensor,
+                        prototypes: tf.Tensor,
+                        labels: tf.Tensor,
+                        n_classes: int) -> Tuple[tf.Tensor, tf.Tensor]:
+        chosen_class = tf.random.uniform((), maxval=n_classes, dtype=tf.int32)
+
+        return self.binary_logit_fn_core(query_set, prototypes, labels,
+                                         n_classes, chosen_class)
+
+    def cycle_binary_logit_fn(self,
+                              query_set: tf.Tensor,
+                              prototypes: tf.Tensor,
+                              labels: tf.Tensor,
+                              n_classes: int) -> Tuple[tf.Tensor, tf.Tensor]:
+        chosen_classes = tf.range(n_classes, dtype=tf.int32)
+
+        array_size = n_classes
+        total_logits = tf.TensorArray(tf.float32, size=array_size)
+        total_labels = tf.TensorArray(tf.int32, size=array_size)
+
+        for chosen_class in chosen_classes:
+            logits, labels = self.binary_logit_fn_core(
+                query_set, prototypes, labels, n_classes, chosen_class)
+
+            total_logits = total_logits.write(chosen_class, logits)
+            total_labels = total_labels.write(chosen_class, labels)
+
+        logits = total_logits.concat()
+        labels = total_labels.concat()
+
+        return logits, labels

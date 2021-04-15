@@ -90,8 +90,8 @@ def main(conf: DictConfig):
                     onset_dict[thresh] = np.append(onset_dict[thresh], onset)
                     offset_dict[thresh] = np.append(offset_dict[thresh], offset)
 
-                probs_path = os.path.join(conf.path.results,
-                                          "probs{}".format(index))
+                probs_path = os.path.join(
+                    conf.path.results, "probs_" + audio_name[:-4] + "_" + str(index))
                 np.save(probs_path, probs)
 
             print("Writing {} files...".format(len(thresholds)))

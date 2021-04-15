@@ -144,8 +144,13 @@ def get_precision_dropoff_points(all_precisions: list,
     return dropoff_points
 
 
-def get_measures_from_histories(conf: DictConfig) -> Tuple[list, list, list]:
-    n_models = conf.set.n_runs
+def get_measures_from_histories(conf: DictConfig,
+                                n_models: Optional[int] = None) -> Tuple[list,
+                                                                         list,
+                                                                         list]:
+    if n_models is None:
+        n_models = conf.set.n_runs
+
     epoch_counts = []
     best_val_accs = []
     best_val_losses = []

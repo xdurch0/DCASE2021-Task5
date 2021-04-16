@@ -372,7 +372,17 @@ class BaselineProtonet(tf.keras.Model):
                             prototypes: tf.Tensor,
                             labels: tf.Tensor,
                             **_kwargs) -> Tuple[tf.Tensor, tf.Tensor]:
-        """Logits computation for "regular" multi-class training."""
+        """Logits computation for "regular" multi-class training.
+
+        Parameters:
+            query_set: The... query set, n x d.
+            prototypes: Tensor of prototypes, k x d.
+            labels: n elements, label for each element of query set.
+
+        Returns:
+            Logits as well as unchanged labels.
+
+        """
         distances = self.compute_distance(query_set, prototypes)
         logits = -distances
 
@@ -384,6 +394,20 @@ class BaselineProtonet(tf.keras.Model):
                              labels: tf.Tensor,
                              n_classes: int,
                              chosen_class: int) -> Tuple[tf.Tensor, tf.Tensor]:
+        """Do binary classification 1 vs rest.
+
+        Parameters:
+            query_set: As above.
+            prototypes: As above.
+            labels: As above.
+            n_classes: Number of classes we have. Could be taken from
+                       prototypes?
+            chosen_class: Class index that will be treated as positive.
+
+        Returns:
+            Classification logits as well as the 0-1 labels.
+
+        """
         chosen_onehot = tf.cast(
             tf.one_hot(chosen_class, depth=n_classes), tf.bool)
         chosen_others = tf.math.logical_not(chosen_onehot)
@@ -410,6 +434,19 @@ class BaselineProtonet(tf.keras.Model):
                         prototypes: tf.Tensor,
                         labels: tf.Tensor,
                         n_classes: int) -> Tuple[tf.Tensor, tf.Tensor]:
+        """Binary classification with randomly chosen 1-class.
+
+        Parameters:
+            query_set: As above.
+            prototypes: As above.
+            labels: As above.
+            n_classes: Number of classes we have. Could be taken from
+                       prototypes?
+
+        Returns:
+            Classification logits as well as the 0-1 labels.
+
+        """
         chosen_class = tf.random.uniform((), maxval=n_classes, dtype=tf.int32)
 
         return self.binary_logit_fn_core(query_set, prototypes, labels,
@@ -420,6 +457,19 @@ class BaselineProtonet(tf.keras.Model):
                               prototypes: tf.Tensor,
                               labels: tf.Tensor,
                               n_classes: int) -> Tuple[tf.Tensor, tf.Tensor]:
+        """Binary classification where each class is treated as 1 in turn.
+
+        Parameters:
+            query_set: As above.
+            prototypes: As above.
+            labels: As above.
+            n_classes: Number of classes we have. Could be taken from
+                       prototypes?
+
+        Returns:
+            Classification logits as well as the 0-1 labels.
+
+        """
         chosen_classes = tf.range(n_classes, dtype=tf.int32)
 
         array_size = n_classes

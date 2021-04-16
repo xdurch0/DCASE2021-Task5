@@ -145,18 +145,22 @@ def get_precision_dropoff_points(all_precisions: list,
 
 
 def get_measures_from_histories(conf: DictConfig,
+                                model_path: Optional[str] = None,
                                 n_models: Optional[int] = None) -> Tuple[list,
                                                                          list,
                                                                          list]:
     if n_models is None:
         n_models = conf.set.n_runs
 
+    if model_path is None:
+        model_path = conf.path.model
+
     epoch_counts = []
     best_val_accs = []
     best_val_losses = []
 
     for index in range(n_models):
-        path = os.path.join(conf.path.model, "history" + str(index) + ".pkl")
+        path = os.path.join(model_path, "history" + str(index) + ".pkl")
 
         with open(path, "rb") as history_file:
             history = pickle.load(history_file)

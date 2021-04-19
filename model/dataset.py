@@ -68,7 +68,8 @@ def per_class_dataset(x: np.ndarray,
         datasets.append(class_data)
 
     # may be able to do this with interleave once I understand how it works lol
-    return tf.data.Dataset.zip(tuple(datasets)).batch(batch_size).prefetch(AUTOTUNE)
+    zipped = tf.data.Dataset.zip(tuple(datasets))
+    return zipped.batch(batch_size).prefetch(AUTOTUNE)
 
 
 def tf_dataset(conf: DictConfig) -> Tuple[tf.data.Dataset,

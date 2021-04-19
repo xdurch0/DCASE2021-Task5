@@ -8,6 +8,7 @@ import numpy as np
 import tensorflow as tf
 from omegaconf import DictConfig
 
+from utils.conversions import time_to_frame
 from .dataset import dataset_eval
 
 
@@ -85,29 +86,6 @@ def get_probabilities(conf: DictConfig,
     return np.mean(np.array(probs_per_iter), axis=0)
 
 
-def threshold_probabilities(probabilities: np.ndarray,
-                            threshold: float) -> Tuple[np.ndarray, np.ndarray]:
-    """Threshold event probabilities to 0/1.
-
-    Parameters:
-        probabilities: Event probabilities as estimated by a model.
-        threshold: Value above which we recognize an event.
-
-    Returns:
-        Two arrays with frame indices of onsets and offsets.
-    """
-    change_kernel = np.array([1, -1])
-    prob_thresh = np.where(probabilities > threshold, 1, 0)
-
-    changes = np.convolve(change_kernel, prob_thresh)
-
-    onset_frames = np.where(changes == 1)[0]
-    offset_frames = np.where(changes == -1)[0]
-    assert len(offset_frames) == len(onset_frames)
-
-    return onset_frames, offset_frames
-
-
 def get_events(probabilities: np.ndarray,
                thresholds: Sequence,
                hdf_eval: h5py.File,
@@ -125,37 +103,63 @@ def get_events(probabilities: np.ndarray,
         dict mapping thresholds to onsets and offsets of events.
 
     """
-    start_index_query = hdf_eval['start_index_query'][()][0]
     if conf.features.type == "raw":
-        hop_seg_samples = int(conf.features.hop_seg * conf.features.sr)
-        start_time_query = start_index_query / conf.features.sr
+        fps = conf.features.sr
     else:
-        hop_seg_samples = int(conf.features.hop_seg * conf.features.sr //
-                              conf.features.hop_mel)
-        start_time_query = (start_index_query * conf.features.hop_mel /
-                            conf.features.sr)
+        fps = conf.features.sr / conf.features.hop_mel
+
+    hop_seg_frames = time_to_frame(conf.features.hop_seg, fps)
+    start_index_query = hdf_eval['start_index_query'][()][0]
+    start_time_query = start_index_query / fps
 
     on_off_sets = dict()
     for threshold in thresholds:
-        onset_frames, offset_frames = threshold_probabilities(probabilities,
-                                                              threshold)
+        thresholded_probs = threshold_probabilities(probabilities, threshold)
+        onset_segments, offset_segments = get_on_and_offsets(thresholded_probs)
 
-        if conf.features.type == "raw":
-            onset_times = ((onset_frames + 1) * hop_seg_samples /
-                           conf.features.sr)
-        else:
-            onset_times = ((onset_frames + 1) * hop_seg_samples *
-                           conf.features.hop_mel / conf.features.sr)
+        # TODO why +1???
+        onset_times = (onset_segments + 1) * hop_seg_frames / fps
         onset_times = onset_times + start_time_query
 
-        if conf.features.type == "raw":
-            offset_times = ((offset_frames + 1) * hop_seg_samples /
-                            conf.features.sr)
-        else:
-            offset_times = ((offset_frames + 1) * hop_seg_samples *
-                            conf.features.hop_mel / conf.features.sr)
+        offset_times = (offset_segments + 1) * hop_seg_frames / fps
         offset_times = offset_times + start_time_query
 
         on_off_sets[threshold] = (onset_times, offset_times)
 
     return on_off_sets
+
+
+def threshold_probabilities(probabilities: np.ndarray,
+                            threshold: float) -> np.ndarray:
+    """Threshold event probabilities to 0/1.
+
+    Parameters:
+        probabilities: Event probabilities as estimated by a model.
+        threshold: Value above which we recognize an event.
+
+    Returns:
+        Sequence of 0s and 1s depending on the threshold.
+
+    """
+    return np.where(probabilities > threshold, 1, 0)
+
+
+def get_on_and_offsets(thresholded_probs) -> Tuple[np.ndarray, np.ndarray]:
+    """Convert a series of 1-0 detections to onset and offset times.
+
+    Parameters:
+        thresholded_probs: Sequence of 0s and 1s denoting whether an event
+                           was detected for this segment.
+
+    Returns:
+        Two arrays with frame indices of onsets and offsets.
+
+    """
+    change_kernel = np.array([1, -1])
+    changes = np.convolve(change_kernel, thresholded_probs)
+
+    onset_frames = np.where(changes == 1)[0]
+    offset_frames = np.where(changes == -1)[0]
+    assert len(offset_frames) == len(onset_frames)
+
+    return onset_frames, offset_frames

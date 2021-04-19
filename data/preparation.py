@@ -11,6 +11,7 @@ import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
 
+from utils.conversions import time_to_frame
 from .transforms import (resample_audio, RawExtractor, FeatureExtractor,
                          extract_feature)
 
@@ -176,7 +177,7 @@ def create_dataset(df_events: pd.DataFrame,
     """
     # we assume either both will be None, or neither!!
     if start_times is None:
-        start_times, end_times = time_2_frame(df_events, fps)
+        start_times, end_times = get_start_and_end_frames(df_events, fps)
 
     if not positive or 'CALL' in df_events.columns:
         class_list = [glob_cls_name] * len(start_times)
@@ -216,8 +217,8 @@ def resample_all(conf: DictConfig):
         resample_audio(audio_file, sr)
 
 
-def time_2_frame(df: pd.DataFrame,
-                 fps: float) -> Tuple[list, list]:
+def get_start_and_end_frames(df: pd.DataFrame,
+                             fps: float) -> Tuple[list, list]:
     """Convert time in seconds to frames, with a margin.
 
     Parameters:
@@ -232,9 +233,9 @@ def time_2_frame(df: pd.DataFrame,
     df.loc[:, 'Endtime'] = df['Endtime'] + 0.025
 
     # TODO is floor on both sensible??
-    start_time = [int(np.floor(start * fps)) for start in df['Starttime']]
+    start_time = [time_to_frame(start, fps) for start in df['Starttime']]
 
-    end_time = [int(np.floor(end * fps)) for end in df['Endtime']]
+    end_time = [time_to_frame(end, fps) for end in df['Endtime']]
 
     return start_time, end_time
 
@@ -281,8 +282,8 @@ def feature_transform(conf, mode):
     if conf.features.type == "pcen_lowpass":
         n_features *= 2
 
-    seg_len_frames = int(round(conf.features.seg_len * fps))
-    hop_seg_frames = int(round(conf.features.hop_seg * fps))
+    seg_len_frames = time_to_frame(conf.features.seg_len, fps)
+    hop_seg_frames = time_to_frame(conf.features.hop_seg, fps)
     print("FPS: {}. Segment length (frames): {}. Hop length (frames): "
           "{}".format(fps, seg_len_frames, hop_seg_frames))
 
@@ -415,7 +416,7 @@ def feature_transform(conf, mode):
             df_eval = pd.read_csv(file, header=0, index_col=False)
             q_list = df_eval['Q'].to_numpy()
 
-            start_times, end_times = time_2_frame(df_eval, fps)
+            start_times, end_times = get_start_and_end_frames(df_eval, fps)
             support_indices = np.where(q_list == 'POS')[0][:conf.train.n_shot]
             hf.create_dataset(
                 'feat_pos', shape=(0, seg_len_frames, n_features),

@@ -4,6 +4,7 @@ set:
   features_eval: false
   make_tfrecord: false
   train: false
+  get_probs: false
   eval: false
   n_runs: 50
 

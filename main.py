@@ -11,7 +11,7 @@ import pandas as pd
 from omegaconf import DictConfig
 
 from data.preparation import feature_transform, resample_all
-from model.evaluate import evaluate_prototypes
+from model.evaluate import get_probabilities, get_events
 from model.model import create_baseline_model
 from model.training import train_protonet
 from stolen.post_process import post_processing
@@ -55,9 +55,39 @@ def main(conf: DictConfig):
 
         train_protonet(conf, conf.set.n_runs)
 
-    if conf.set.eval:
+    if conf.set.get_probs:
         if not os.path.isdir(conf.path.results):
             os.makedirs(conf.path.results)
+
+        all_feat_files = [file for file in glob(os.path.join(
+            conf.path.feat_eval, '*.h5'))]
+
+        for index in range(conf.set.n_runs):
+            print("\nGetting probabilities for model #{} out of {}".format(
+                index + 1, conf.set.n_runs))
+
+            model = create_baseline_model(conf)
+            model.load_weights(conf.path.best_model + str(index) + ".h5")
+
+            for feat_file in all_feat_files:
+                feat_name = feat_file.split('/')[-1]
+                audio_name = feat_name.replace('h5', 'wav')
+
+                print("Processing audio file : {}".format(audio_name))
+
+                hdf_eval = h5py.File(feat_file, 'r')
+                probs = get_probabilities(conf, hdf_eval, model)
+                hdf_eval.close()
+
+                probs_path = os.path.join(
+                    conf.path.results,
+                    "probs_" + audio_name[:-4] + "_" + str(index))
+                np.save(probs_path, probs)
+
+    if conf.set.eval:
+        if not os.path.isdir(conf.path.results):
+            raise ValueError("Results folder does not exist yet. You have to "
+                             "extract the probabilities first!")
 
         thresholds = np.around(np.linspace(0., 1., 101), decimals=2)
         all_feat_files = [file for file in glob(os.path.join(
@@ -80,8 +110,13 @@ def main(conf: DictConfig):
                 print("Processing audio file : {}".format(audio_name))
 
                 hdf_eval = h5py.File(feat_file, 'r')
-                on_off_sets, probs = evaluate_prototypes(conf, hdf_eval, model,
-                                                         thresholds)
+
+                probs_path = os.path.join(
+                    conf.path.results,
+                    "probs_" + audio_name[:-4] + "_" + str(index))
+                probs = np.load(probs_path)
+
+                on_off_sets = get_events(probs, thresholds, hdf_eval, conf)
                 hdf_eval.close()
 
                 for thresh, (onset, offset) in on_off_sets.items():
@@ -89,10 +124,6 @@ def main(conf: DictConfig):
                     name_dict[thresh] = np.append(name_dict[thresh], name)
                     onset_dict[thresh] = np.append(onset_dict[thresh], onset)
                     offset_dict[thresh] = np.append(offset_dict[thresh], offset)
-
-                probs_path = os.path.join(
-                    conf.path.results, "probs_" + audio_name[:-4] + "_" + str(index))
-                np.save(probs_path, probs)
 
             print("Writing {} files...".format(len(thresholds)))
             for thresh in thresholds:

@@ -7,6 +7,7 @@ import librosa
 import librosa.display
 import numpy as np
 import pandas as pd
+from IPython.display import Audio, display
 from matplotlib import pyplot as plt
 from omegaconf import DictConfig
 from scipy import interpolate
@@ -240,6 +241,7 @@ def the_works(conf, file_path, model_index, threshold, mode, margin=20,
     print("Found {} events of interest".format(len(of_interest)))
     cols = max_plots_per_column
     rows = ceil(len(of_interest) / cols)
+    plt.figure(figsize=(cols*10, rows*6))
 
     for ind, (start, end) in enumerate(of_interest):
         show_start = start - query_offset - margin
@@ -247,9 +249,8 @@ def the_works(conf, file_path, model_index, threshold, mode, margin=20,
         feats_show = features[show_start:show_end]
         probs_show = probs[show_start:show_end]
 
-        plt.subplot(rows, cols, ind + 1)
-        plt.figure()
-        ax = plt.gca()
+        ax = plt.subplot(rows, cols, ind + 1)
+        ax.set_title("Event #{}".format(ind))
 
         fmax = conf.features.fmax
         librosa.display.specshow(
@@ -262,7 +263,10 @@ def the_works(conf, file_path, model_index, threshold, mode, margin=20,
             cmap="magma")
 
         ax2 = ax.twinx()
-        ax2.plot(probs_show * fmax)
+        x_shift = np.arange(len(probs_show))
+        x_shift += 0.5
+
+        ax2.plot(x_shift, probs_show * fmax)
         ax2.plot([0, len(feats_show)], [fmax / 2, fmax / 2], "r--")
 
         preds_show = pred_mask[show_start:show_end]
@@ -270,13 +274,31 @@ def the_works(conf, file_path, model_index, threshold, mode, margin=20,
         unk_show = unk_mask[show_start:show_end]
 
         # don't harcode these lol
-        ax2.plot(preds_show * 10000, "r.")
-        ax2.plot(true_show * 9000, "g.")
-        ax2.plot(unk_show * 8000, "y.")
+        ax2.plot(x_shift, preds_show * 10000, "r.")
+        ax2.plot(x_shift, true_show * 9000, "g.")
+        ax2.plot(x_shift, unk_show * 8000, "y.")
 
         plt.ylim(0, fmax)
 
     plt.show()
+
+    show_audios(of_interest, conf, file_path, margin)
+
+
+def show_audios(of_interest, conf, file_path, margin=20):
+    file_path = file_path[:-4] + "_{}hz".format(conf.features.sr) + ".wav"
+
+    fps = conf.features.sr / conf.features.hop_mel  # TODO raw features
+
+    for ind, (start, end) in enumerate(of_interest):
+        start_time = (start - margin) / fps
+        end_time = (end + margin) / fps
+        audio_snippet, _ = librosa.load(file_path, sr=None, offset=start_time,
+                                        duration=end_time - start_time)
+
+        display_audio = Audio(audio_snippet, rate=conf.features.sr)
+        print("Audio for event #{}".format(ind))
+        display(display_audio)
 
 
 # TODO

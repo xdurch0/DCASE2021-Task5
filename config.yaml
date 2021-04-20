@@ -36,6 +36,7 @@ features:
   eps: 1e-6
   center: true
   use_negative: 500
+
 train:
   n_shot: 5
   n_query: 55
@@ -48,6 +49,7 @@ train:
   binary: false
   cycle_binary: false
   label_smoothing: 0.
+
 model:
   dims: 2
   preprocess: mel
@@ -59,3 +61,4 @@ eval:
   iterations: 10
   query_batch_size: 256
   negative_set_batch_size : 256
+  thresholding: absolute

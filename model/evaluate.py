@@ -114,7 +114,8 @@ def get_events(probabilities: np.ndarray,
 
     on_off_sets = dict()
     for threshold in thresholds:
-        thresholded_probs = threshold_probabilities(probabilities, threshold)
+        thresholded_probs = threshold_probabilities(probabilities, threshold,
+                                                    conf.eval.thresholding)
         onset_segments, offset_segments = get_on_and_offsets(thresholded_probs)
 
         # TODO why +1???
@@ -130,18 +131,29 @@ def get_events(probabilities: np.ndarray,
 
 
 def threshold_probabilities(probabilities: np.ndarray,
-                            threshold: float) -> np.ndarray:
+                            threshold: float,
+                            mode: str) -> np.ndarray:
     """Threshold event probabilities to 0/1.
 
     Parameters:
         probabilities: Event probabilities as estimated by a model.
         threshold: Value above which we recognize an event.
+        mode: absolute or relative.
 
     Returns:
         Sequence of 0s and 1s depending on the threshold.
 
     """
-    return np.where(probabilities > threshold, 1, 0)
+    if mode == "absolute":
+        return np.where(probabilities > threshold, 1, 0)
+    elif mode == "relative":
+        avg_width = 10
+        local_averages = np.convolve(probabilities,
+                                     np.ones(avg_width) / avg_width,
+                                     "same")
+        return np.where(probabilities > threshold * local_averages, 1, 0)
+    else:
+        raise ValueError("Invalid mode {}".format(mode))
 
 
 def get_on_and_offsets(thresholded_probs) -> Tuple[np.ndarray, np.ndarray]:

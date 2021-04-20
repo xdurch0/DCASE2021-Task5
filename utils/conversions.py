@@ -7,5 +7,6 @@ def time_to_frame(time: float, fps: float) -> int:
 
     Returns:
         Frame index corresponding to time. Rounded down!!
+
     """
     return int(time * fps)

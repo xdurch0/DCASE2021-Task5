@@ -113,7 +113,7 @@ def main(conf: DictConfig):
 
                 probs_path = os.path.join(
                     conf.path.results,
-                    "probs_" + audio_name[:-4] + "_" + str(index))
+                    "probs_" + audio_name[:-4] + "_" + str(index) + ".npy")
                 probs = np.load(probs_path)
 
                 on_off_sets = get_events(probs, thresholds, hdf_eval, conf)

@@ -263,11 +263,12 @@ def the_works(conf, file_path, model_index, threshold, mode, margin=20,
             cmap="magma")
 
         ax2 = ax.twinx()
-        x_shift = np.arange(len(probs_show))
+        x_shift = np.arange(len(probs_show), dtype=np.float32)
         x_shift += 0.5
 
         ax2.plot(x_shift, probs_show * fmax)
-        ax2.plot([0, len(feats_show)], [fmax / 2, fmax / 2], "r--")
+        ax2.plot([0, len(feats_show)], [threshold * fmax, threshold * fmax],
+                 "r--")
 
         preds_show = pred_mask[show_start:show_end]
         true_show = true_mask[show_start:show_end]
@@ -287,6 +288,7 @@ def the_works(conf, file_path, model_index, threshold, mode, margin=20,
 
 def show_audios(of_interest, conf, file_path, margin=20):
     file_path = file_path[:-4] + "_{}hz".format(conf.features.sr) + ".wav"
+    file_path = os.path.join(conf.path.eval_dir, file_path)
 
     fps = conf.features.sr / conf.features.hop_mel  # TODO raw features
 

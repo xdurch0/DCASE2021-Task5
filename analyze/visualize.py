@@ -1,4 +1,5 @@
 import os
+from math import ceil
 from typing import Tuple
 
 import h5py
@@ -16,13 +17,15 @@ from utils.conversions import time_to_frame
 
 def get_probs_and_frames(conf: DictConfig,
                          h5_path: str,
-                         index: int) -> Tuple[np.ndarray, np.ndarray, int]:
+                         model_index: int) -> Tuple[np.ndarray,
+                                                    np.ndarray,
+                                                    int]:
     """Get query set frames and corresponding model probabilities.
 
     Parameters:
         conf: hydra config object.
         h5_path: Path to hdf5 file with query set features for one audio file.
-        index: Index of model to get probabilities from.
+        model_index: Index of model to get probabilities from.
 
     Returns:
         Three elements:
@@ -55,15 +58,17 @@ def get_probs_and_frames(conf: DictConfig,
     feat_name = h5_path.split('/')[-1]
     prob_path = os.path.join(
         conf.path.results,
-        "probs_" + feat_name[:-3] + "_" + str(index) + ".npy")
+        "probs_" + feat_name[:-3] + "_" + str(model_index) + ".npy")
     probs = np.load(prob_path)
 
-    segment_centers = seg_len_frames // 2 + np.arange(len(probs)) * hop_seg_frames
+    segment_centers = (seg_len_frames // 2 + np.arange(len(probs))
+                       * hop_seg_frames)
 
     prob_interpolator = interpolate.interp1d(segment_centers, probs,
                                              fill_value="extrapolate")
 
-    return prob_interpolator(np.arange(len(feats_no_overlap))), feats_no_overlap, query_offset
+    return (prob_interpolator(np.arange(len(feats_no_overlap))),
+            feats_no_overlap, query_offset)
 
 
 def get_event_frames(conf: DictConfig,
@@ -86,7 +91,9 @@ def get_event_frames(conf: DictConfig,
     file_name = file_path.split("/")[-1]
 
     predict_path = os.path.join(
-        conf.path.results, "Eval_out_model" + str(model_index) + "_thresh" + str(threshold) + "_postproc.csv")
+        conf.path.results,
+        "Eval_out_model" + str(model_index) + "_thresh" + str(threshold)
+        + "_postproc.csv")
     pred_csv = pd.read_csv(predict_path)
 
     pred_events_by_audiofile = dict(tuple(pred_csv.groupby('Audiofilename')))
@@ -95,8 +102,10 @@ def get_event_frames(conf: DictConfig,
 
     true_event_path = os.path.join(conf.path.eval_dir, file_path)
     true_events_with_unk = pd.read_csv(true_event_path[:-4] + ".csv")
-    true_events = true_events_with_unk[(true_events_with_unk == 'POS').any(axis=1)]
-    unk_events = true_events_with_unk[(true_events_with_unk == "UNK").any(axis=1)]
+    true_events = true_events_with_unk[
+        (true_events_with_unk == 'POS').any(axis=1)]
+    unk_events = true_events_with_unk[
+        (true_events_with_unk == "UNK").any(axis=1)]
 
     fps = conf.features.sr / conf.features.hop_mel  # TODO raw features
     prediction_frames_start, prediction_frames_end = get_start_and_end_frames(
@@ -167,8 +176,8 @@ def get_all_predictions(event_dict):
     return list(zip(*event_dict["predictions"]))
 
 
-def get_all_true_events(event_dict):
-    return list(zip(*event_dict["true"]))
+def get_all_true_events(event_dict, remove_first_n=5):
+    return list(zip(*event_dict["true"]))[remove_first_n:]
 
 
 def get_all_unk_events(event_dict):
@@ -186,23 +195,32 @@ def match_event_with_list(event_start, event_end, start_list, end_list):
     return False
 
 
-def event_lists_to_mask(start_list, end_list, mask_length):
+def event_lists_to_mask(start_list, end_list, mask_length, query_offset):
     mask = np.zeros(mask_length)
     for start, end in zip(start_list, end_list):
-        mask[start:end] = 1
+        mask[(start - query_offset):(end - query_offset)] = 1
 
     return mask
 
 
-def the_works(conf, file_path, index, threshold, mode):
-    # TODO unify file path -- one is h5 features, one is audio file
-    probs, features, query_offset = get_probs_and_frames(conf, file_path, index)
+def the_works(conf, file_path, model_index, threshold, mode, margin=20,
+              max_plots_per_column=2):
+    hdf5_file = file_path.split("/")[-1][:-4] + ".h5"
+    hdf5_file = os.path.join(conf.path.feat_eval, hdf5_file)
+    probs, features, query_offset = get_probs_and_frames(conf, hdf5_file,
+                                                         model_index)
 
-    event_dict = get_event_frames(conf, file_path, index, threshold)
+    event_dict = get_event_frames(conf, file_path, model_index, threshold)
 
-    pred_mask = event_lists_to_mask(*event_dict["predictions"], len(features))
-    true_mask = event_lists_to_mask(*event_dict["true"], len(features))
-    unk_mask = event_lists_to_mask(*event_dict["unk"], len(features))
+    pred_mask = event_lists_to_mask(*event_dict["predictions"],
+                                    len(features),
+                                    query_offset)
+    true_mask = event_lists_to_mask(*event_dict["true"],
+                                    len(features),
+                                    query_offset)
+    unk_mask = event_lists_to_mask(*event_dict["unk"],
+                                   len(features),
+                                   query_offset)
 
     if mode == "all_preds":
         of_interest = get_all_predictions(event_dict)
@@ -219,37 +237,48 @@ def the_works(conf, file_path, index, threshold, mode):
     else:
         raise ValueError("Sorry but that's not gonna work!!!!12121")
 
-    # TODO finish
-    margin = 20
-    for start, end in of_interest:
+    print("Found {} events of interest".format(len(of_interest)))
+    cols = max_plots_per_column
+    rows = ceil(len(of_interest) / cols)
+
+    for ind, (start, end) in enumerate(of_interest):
         show_start = start - query_offset - margin
         show_end = end - query_offset + margin
         feats_show = features[show_start:show_end]
         probs_show = probs[show_start:show_end]
 
-        fig = plt.figure()
+        plt.subplot(rows, cols, ind + 1)
+        plt.figure()
         ax = plt.gca()
 
-        librosa.display.specshow(np.log(feats_show[:, :128].T + 1e-8),
-                                 x_axis="frames", sr=22050, hop_length=256,
-                                 fmax=11025, y_axis="mel",
-                                 cmap="magma")
+        fmax = conf.features.fmax
+        librosa.display.specshow(
+            np.log(feats_show[:, :conf.features.n_mels].T + 1e-8),
+            x_axis="frames",
+            y_axis="mel",
+            sr=conf.features.sr,
+            hop_length=conf.features.hop_mel,
+            fmax=fmax,
+            cmap="magma")
 
         ax2 = ax.twinx()
-        ax2.plot(probs_show * 11025)
-        ax2.plot([0, len(feats_show)], [11025 / 2, 11025 / 2], "r--")
+        ax2.plot(probs_show * fmax)
+        ax2.plot([0, len(feats_show)], [fmax / 2, fmax / 2], "r--")
 
         preds_show = pred_mask[show_start:show_end]
         true_show = true_mask[show_start:show_end]
         unk_show = unk_mask[show_start:show_end]
-        ax2.plot(preds_show * 10000, "r-")
-        ax2.plot(true_show * 9000, "g-")
-        ax2.plot(unk_show * 8000, "y-")
 
-        plt.ylim(0, 11025)
-        plt.show()
-        input()
+        # don't harcode these lol
+        ax2.plot(preds_show * 10000, "r.")
+        ax2.plot(true_show * 9000, "g.")
+        ax2.plot(unk_show * 8000, "y.")
+
+        plt.ylim(0, fmax)
+
+    plt.show()
 
 
 # TODO
-# or defining a minimum degree of overlap required?
+# defining a minimum degree of overlap required?
+# understand evaluation code to minimize discrepancies :(((

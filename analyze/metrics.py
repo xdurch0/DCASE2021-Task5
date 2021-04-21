@@ -12,7 +12,12 @@ from evaluation_metrics.evaluation import evaluate
 def get_classification_metrics(conf: DictConfig,
                                results_path: Optional[str] = None,
                                n_models: Optional[int] = None) -> dict:
-    thresholds = np.around(np.linspace(0., 1., 101), 2)
+    min_thresh = conf.eval.lowest_thresh
+    max_thresh = conf.eval.highest_thresh
+    n_threshs = int((max_thresh - min_thresh) / conf.eval.thresh_step) + 1
+    thresholds = np.around(np.linspace(min_thresh, max_thresh, n_threshs),
+                           decimals=2)
+
     all_precisions = []
     all_recalls = []
     all_fscores = []

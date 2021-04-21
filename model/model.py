@@ -81,7 +81,7 @@ def create_baseline_model(conf: DictConfig,
 
     elif conf.features.type == "pcen_lowpass":
         fps = conf.features.sr / conf.features.hop_mel
-        time_shape = int(round(conf.features.seg_len * fps))
+        time_shape = int((conf.features.seg_len * fps))
         inp = tf.keras.Input(shape=(time_shape, 2*conf.features.n_mels))
         preprocessed = PCENCompression(n_channels=conf.features.n_mels,
                                        gain=conf.features.gain,
@@ -92,7 +92,7 @@ def create_baseline_model(conf: DictConfig,
 
     else:  # PCEN or Mel
         fps = conf.features.sr / conf.features.hop_mel
-        time_shape = int(round(conf.features.seg_len * fps))
+        time_shape = int((conf.features.seg_len * fps))
         inp = tf.keras.Input(shape=(time_shape, conf.features.n_mels))
         preprocessed = inp
 
@@ -107,6 +107,7 @@ def create_baseline_model(conf: DictConfig,
     b3 = baseline_block(b2, 128, dims, scope="block3")
     b4 = baseline_block(b3, 128, dims, scope="block4")
 
+    # TODO this does not work for 1d inputs lol
     if conf.model.pool == "all":
         b4 = tfkl.GlobalMaxPool2D(name="global_pool_all")(b4)
     elif conf.model.pool == "time":
@@ -118,10 +119,21 @@ def create_baseline_model(conf: DictConfig,
 
     flat = tfkl.Flatten(name="flatten")(b4)
 
+    distance_inp_shape = tf.concat([flat, flat], axis=-1).shape[1:]
+    distance_inp = tf.keras.Input(shape=distance_inp_shape)
+    if conf.model.distance_fn == "euclid":
+        distance = tfkl.Lambda(euclidean_distance)(distance_inp)
+    elif conf.model.distance_fn == "euclid_squared":
+        distance = tfkl.Lambda(squared_euclidean_distance)(distance_inp)
+    else:
+        raise ValueError("Invalid distance_fn specified: "
+                         "{}".format(conf.model.distance_fn))
+    distance_model = tf.keras.Model(distance_inp, distance)
+
     model = BaselineProtonet(inp, flat,
                              n_support=conf.train.n_shot,
                              n_query=conf.train.n_query,
-                             distance_fn=conf.model.distance_fn,
+                             distance_fn=distance_model,
                              k_way=conf.train.k_way,
                              binary_training=conf.train.binary,
                              cycle_binary=conf.train.cycle_binary,
@@ -150,7 +162,7 @@ class BaselineProtonet(tf.keras.Model):
                  outputs: tf.Tensor,
                  n_support: int,
                  n_query: int,
-                 distance_fn: str,
+                 distance_fn: tf.keras.Model,
                  k_way: Optional[int] = None,
                  binary_training: bool = False,
                  cycle_binary: bool = False,
@@ -181,14 +193,7 @@ class BaselineProtonet(tf.keras.Model):
         self.n_query = n_query
         self.binary_training = binary_training
         self.cycle_binary = cycle_binary
-
-        if distance_fn == "euclid":
-            self.distance_fn = lambda x, y: tf.norm(x - y, axis=-1)
-        elif distance_fn == "euclid_squared":
-            self.distance_fn = lambda x, y: tf.reduce_mean((x - y)**2, axis=-1)
-        else:
-            raise ValueError("Invalid distance_fn specified: "
-                             "{}".format(distance_fn))
+        self.distance_fn = distance_fn
 
         if binary_training:
             if cycle_binary:
@@ -339,7 +344,13 @@ class BaselineProtonet(tf.keras.Model):
             n x k distance matrix where element (i, j) is the distance between
             query element i and prototype j.
         """
-        return self.distance_fn(queries[:, None], prototypes[None])
+        queries_repeated = tf.repeat(queries,
+                                     repeats=tf.shape(prototypes)[0],
+                                     axis=0)
+        prototypes_tiled = tf.tile(prototypes, [tf.shape(queries)[0], 1])
+        distances = self.distance_fn(queries_repeated, prototypes_tiled)
+        return tf.reshape(distances, [tf.shape(queries)[0],
+                                      tf.shape(prototypes)[0]])
 
     def get_probability(self,
                         positive_prototype: Union[tf.Tensor, np.ndarray],
@@ -487,3 +498,13 @@ class BaselineProtonet(tf.keras.Model):
         labels = total_labels.concat()
 
         return logits, labels
+
+
+def euclidean_distance(inp):
+    inp1, inp2 = tf.split(inp, 2, axis=-1)
+    return tf.norm(inp1 - inp2, axis=-1)
+
+
+def squared_euclidean_distance(inp):
+    inp1, inp2 = tf.split(inp, 2, axis=-1)
+    return tf.reduce_mean((inp1 - inp2)**2, axis=-1)

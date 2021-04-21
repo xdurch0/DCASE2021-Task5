@@ -123,8 +123,26 @@ def create_baseline_model(conf: DictConfig,
     distance_inp = tf.keras.Input(shape=distance_inp_shape)
     if conf.model.distance_fn == "euclid":
         distance = tfkl.Lambda(euclidean_distance)(distance_inp)
+
     elif conf.model.distance_fn == "euclid_squared":
         distance = tfkl.Lambda(squared_euclidean_distance)(distance_inp)
+
+    elif conf.model.distance_fn == "mlp":
+        h1 = tfkl.Dense(1024)(distance_inp)
+        bn1 = tfkl.BatchNormalization()(h1)
+        a1 = tfkl.Activation(tf.nn.swish)(bn1)
+
+        h2 = tfkl.Dense(256)(a1)
+        bn2 = tfkl.BatchNormalization()(h2)
+        a2 = tfkl.Activation(tf.nn.swish)(bn2)
+
+        h3 = tfkl.Dense(64)(a2)
+        bn3 = tfkl.BatchNormalization()(h3)
+        a3 = tfkl.Activation(tf.nn.swish)(bn3)
+
+        h4 = tfkl.Dense(1)(a3)
+        bn4 = tfkl.BatchNormalization()(h4)
+        distance = tfkl.Activation(tf.nn.softplus)(bn4)
     else:
         raise ValueError("Invalid distance_fn specified: "
                          "{}".format(conf.model.distance_fn))
@@ -348,7 +366,8 @@ class BaselineProtonet(tf.keras.Model):
                                      repeats=tf.shape(prototypes)[0],
                                      axis=0)
         prototypes_tiled = tf.tile(prototypes, [tf.shape(queries)[0], 1])
-        distances = self.distance_fn(queries_repeated, prototypes_tiled)
+        concatenated = tf.concat([queries_repeated, prototypes_tiled], axis=-1)
+        distances = self.distance_fn(concatenated)
         return tf.reshape(distances, [tf.shape(queries)[0],
                                       tf.shape(prototypes)[0]])
 

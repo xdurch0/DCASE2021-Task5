@@ -89,7 +89,12 @@ def main(conf: DictConfig):
             raise ValueError("Results folder does not exist yet. You have to "
                              "extract the probabilities first!")
 
-        thresholds = np.around(np.linspace(0., 1., 101), decimals=2)
+        min_thresh = conf.eval.lowest_thresh
+        max_thresh = conf.eval.highest_thresh
+        n_threshs = int((max_thresh - min_thresh) / conf.eval.thresh_step) + 1
+        thresholds = np.around(np.linspace(min_thresh, max_thresh, n_threshs),
+                               decimals=2)
+
         all_feat_files = [file for file in glob(os.path.join(
             conf.path.feat_eval, '*.h5'))]
 

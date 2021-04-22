@@ -45,6 +45,10 @@ def get_event_fractions(conf: DictConfig,
         event_duration_std = np.std(event_lengths)
         median_event_duration = np.median(event_lengths)
 
+        event_distances = df_pos["Starttime"][1:] - df_pos["Endtime"][:-1]
+        min_distance = event_distances.min()
+        max_distance = event_distances.max()
+
         print("File {}".format(file))
         print("Number of positive events: {}".format(len(event_lengths)))
         print("Audio duration (seconds): {}".format(length_total))
@@ -56,7 +60,10 @@ def get_event_fractions(conf: DictConfig,
         print("Mean event duration: {}".format(mean_event_duration))
         print("Median event duration: {}".format(median_event_duration))
         print("Event duration standard deviation: {}".format(event_duration_std))
-        print("")
+        print()
+        print("Longest distance between events: {}".format(max_distance))
+        print("Shortest distance between events: {}".format(min_distance))
+        print()
 
         length_total_all_files += length_total
         total_event_duration_all_files += total_event_duration

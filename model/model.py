@@ -117,21 +117,26 @@ def create_baseline_model(conf: DictConfig,
         b4 = tfkl.Lambda(lambda x: tf.reduce_max(x, axis=2),
                          name="global_pool_freqs")(b4)
 
-    distance_inp_shape = tf.concat([b4, b4], axis=-1).shape[1:]
-    distance_inp = tf.keras.Input(shape=distance_inp_shape)
+    distance_inp_shape = b4.shape[1:]
+    distance_inp1 = tf.keras.Input(shape=distance_inp_shape)
+    distance_inp2 = tf.keras.Input(shape=distance_inp_shape)
     if conf.model.distance_fn == "euclid":
-        flat = tfkl.Flatten(name="flatten")(distance_inp)
+        flat1 = tfkl.Flatten(name="flatten1")(distance_inp1)
+        flat2 = tfkl.Flatten(name="flatten2")(distance_inp2)
         distance = tfkl.Lambda(euclidean_distance,
-                               name="euclidean")(flat)
+                               name="euclidean")([flat1, flat2])
 
     elif conf.model.distance_fn == "euclid_squared":
-        flat = tfkl.Flatten(name="flatten")(distance_inp)
+        flat1 = tfkl.Flatten(name="flatten1")(distance_inp1)
+        flat2 = tfkl.Flatten(name="flatten2")(distance_inp2)
         distance = tfkl.Lambda(squared_euclidean_distance,
-                               name="squared_euclidean")(flat)
+                               name="squared_euclidean")([flat1, flat2])
 
     elif conf.model.distance_fn == "mlp":
-        flat = tfkl.Flatten(name="flatten")(distance_inp)
-        h1 = tfkl.Dense(1024)(flat)
+        flat1 = tfkl.Flatten(name="flatten1")(distance_inp1)
+        flat2 = tfkl.Flatten(name="flatten2")(distance_inp2)
+        concat = tfkl.Concatenate()([flat1, flat2])
+        h1 = tfkl.Dense(1024)(concat)
         bn1 = tfkl.BatchNormalization()(h1)
         a1 = tfkl.Activation(tf.nn.swish)(bn1)
 
@@ -149,7 +154,7 @@ def create_baseline_model(conf: DictConfig,
     else:
         raise ValueError("Invalid distance_fn specified: "
                          "{}".format(conf.model.distance_fn))
-    distance_model = tf.keras.Model(distance_inp, distance)
+    distance_model = tf.keras.Model([distance_inp1, distance_inp2], distance)
 
     model = BaselineProtonet(inp, b4,
                              n_support=conf.train.n_shot,
@@ -376,7 +381,11 @@ class BaselineProtonet(tf.keras.Model):
         queries_repeated = tf.repeat(queries,
                                      repeats=tf.shape(prototypes)[0],
                                      axis=0)
-        prototypes_tiled = tf.tile(prototypes, [tf.shape(queries)[0], 1])
+
+        ndims = len(prototypes.shape)
+        prototypes_tiled = tf.tile(prototypes,
+                                   [tf.shape(queries)[0]] + (ndims - 1) * [1])
+
         concatenated = tf.concat([queries_repeated, prototypes_tiled], axis=-1)
         distances = self.distance_fn(concatenated)
         return tf.reshape(distances, [tf.shape(queries)[0],
@@ -530,11 +539,11 @@ class BaselineProtonet(tf.keras.Model):
         return logits, labels
 
 
-def euclidean_distance(inp):
-    inp1, inp2 = tf.split(inp, 2, axis=-1)
+def euclidean_distance(inputs):
+    inp1, inp2 = inputs
     return tf.norm(inp1 - inp2, axis=-1)
 
 
-def squared_euclidean_distance(inp):
-    inp1, inp2 = tf.split(inp, 2, axis=-1)
+def squared_euclidean_distance(inputs):
+    inp1, inp2 = inputs
     return tf.reduce_mean((inp1 - inp2)**2, axis=-1)

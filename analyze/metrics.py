@@ -70,7 +70,7 @@ def plot_metrics(metrics: dict,
 
     n_models = len(all_fscores)
 
-    color = iter(plt.cm.rainbow(np.linspace(0, 1, n_models)))
+    color = iter(plt.cm.gist_rainbow(np.linspace(0, 1, n_models)))
     plt.figure(figsize=(15, 5))
     for ind in range(n_models):
         plt.plot(thresholds, all_precisions[ind], "-", c=next(color),
@@ -87,7 +87,7 @@ def plot_metrics(metrics: dict,
     plt.title("Precision")
     plt.show()
 
-    color = iter(plt.cm.rainbow(np.linspace(0, 1, n_models)))
+    color = iter(plt.cm.gist_rainbow(np.linspace(0, 1, n_models)))
     plt.figure(figsize=(15, 5))
     for ind in range(n_models):
         plt.plot(thresholds, all_recalls[ind], "-", c=next(color),
@@ -104,7 +104,7 @@ def plot_metrics(metrics: dict,
     plt.title("Recall")
     plt.show()
 
-    color = iter(plt.cm.rainbow(np.linspace(0, 1, n_models)))
+    color = iter(plt.cm.gist_rainbow(np.linspace(0, 1, n_models)))
     plt.figure(figsize=(15, 5))
     for ind in range(n_models):
         col = next(color)

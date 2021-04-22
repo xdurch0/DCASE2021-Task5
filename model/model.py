@@ -117,18 +117,21 @@ def create_baseline_model(conf: DictConfig,
         b4 = tfkl.Lambda(lambda x: tf.reduce_max(x, axis=2),
                          name="global_pool_freqs")(b4)
 
-    flat = tfkl.Flatten(name="flatten")(b4)
-
-    distance_inp_shape = tf.concat([flat, flat], axis=-1).shape[1:]
+    distance_inp_shape = tf.concat([b4, b4], axis=-1).shape[1:]
     distance_inp = tf.keras.Input(shape=distance_inp_shape)
     if conf.model.distance_fn == "euclid":
-        distance = tfkl.Lambda(euclidean_distance)(distance_inp)
+        flat = tfkl.Flatten(name="flatten")(distance_inp)
+        distance = tfkl.Lambda(euclidean_distance,
+                               name="euclidean")(flat)
 
     elif conf.model.distance_fn == "euclid_squared":
-        distance = tfkl.Lambda(squared_euclidean_distance)(distance_inp)
+        flat = tfkl.Flatten(name="flatten")(distance_inp)
+        distance = tfkl.Lambda(squared_euclidean_distance,
+                               name="squared_euclidean")(flat)
 
     elif conf.model.distance_fn == "mlp":
-        h1 = tfkl.Dense(1024)(distance_inp)
+        flat = tfkl.Flatten(name="flatten")(distance_inp)
+        h1 = tfkl.Dense(1024)(flat)
         bn1 = tfkl.BatchNormalization()(h1)
         a1 = tfkl.Activation(tf.nn.swish)(bn1)
 
@@ -148,7 +151,7 @@ def create_baseline_model(conf: DictConfig,
                          "{}".format(conf.model.distance_fn))
     distance_model = tf.keras.Model(distance_inp, distance)
 
-    model = BaselineProtonet(inp, flat,
+    model = BaselineProtonet(inp, b4,
                              n_support=conf.train.n_shot,
                              n_query=conf.train.n_query,
                              distance_fn=distance_model,
@@ -279,13 +282,21 @@ class BaselineProtonet(tf.keras.Model):
 
         """
         embeddings_stacked = self(inputs_stacked, training=training)
+
+        embedding_shape = tf.shape(embeddings_stacked)[1:]
+        stacked_shape = tf.concat([[n_classes, self.n_support + self.n_query],
+                                   embedding_shape],
+                                  axis=0)
+        query_set_shape = tf.concat([[n_classes * self.n_query],
+                                     embedding_shape],
+                                    axis=0)
+
         # assumes that embeddings are 1D, so stacked thingy is a
         #  matrix (b x d)
-        embeddings_per_class = tf.reshape(
-            embeddings_stacked, [n_classes, self.n_support + self.n_query, -1])
+        embeddings_per_class = tf.reshape(embeddings_stacked, stacked_shape)
         support_set = embeddings_per_class[:, :self.n_support]
         query_set = embeddings_per_class[:, self.n_support:]
-        query_set = tf.reshape(query_set, [n_classes * self.n_query, -1])
+        query_set = tf.reshape(query_set, query_set_shape)
 
         # n_classes x d
         prototypes = tf.reduce_mean(support_set, axis=1)

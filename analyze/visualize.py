@@ -244,7 +244,7 @@ def the_works(conf, file_path, model_index, threshold, mode, margin=20,
     plt.figure(figsize=(cols*10, rows*6))
 
     for ind, (start, end) in enumerate(of_interest):
-        show_start = start - query_offset - margin
+        show_start = np.maximum(start - query_offset - margin, 0)
         show_end = end - query_offset + margin
         feats_show = features[show_start:show_end]
         probs_show = probs[show_start:show_end]

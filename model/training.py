@@ -6,7 +6,7 @@ from omegaconf import DictConfig
 
 from .callbacks import ConfusionMatrix
 from .dataset import tf_dataset
-from .model import create_baseline_model
+from .architecture import create_baseline_model
 
 
 def train_protonet(conf: DictConfig,

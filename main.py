@@ -12,7 +12,7 @@ from omegaconf import DictConfig
 
 from data.preparation import feature_transform, resample_all
 from model.evaluate import get_probabilities, get_events
-from model.model import create_baseline_model
+from model.architecture import create_baseline_model
 from model.training import train_protonet
 from stolen.post_process import post_processing
 

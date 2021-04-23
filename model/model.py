@@ -386,8 +386,7 @@ class BaselineProtonet(tf.keras.Model):
         prototypes_tiled = tf.tile(prototypes,
                                    [tf.shape(queries)[0]] + (ndims - 1) * [1])
 
-        concatenated = tf.concat([queries_repeated, prototypes_tiled], axis=-1)
-        distances = self.distance_fn(concatenated)
+        distances = self.distance_fn([queries_repeated, prototypes_tiled])
         return tf.reshape(distances, [tf.shape(queries)[0],
                                       tf.shape(prototypes)[0]])
 

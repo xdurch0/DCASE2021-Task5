@@ -45,7 +45,8 @@ def get_event_fractions(conf: DictConfig,
         event_duration_std = np.std(event_lengths)
         median_event_duration = np.median(event_lengths)
 
-        event_distances = df_pos["Starttime"][1:] - df_pos["Endtime"][:-1]
+        event_distances = (np.array(df_pos["Starttime"][1:])
+                           - np.array(df_pos["Endtime"][:-1]))
         min_distance = event_distances.min()
         max_distance = event_distances.max()
 

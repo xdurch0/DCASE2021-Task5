@@ -205,8 +205,6 @@ def feature_transform(conf, mode):
         Number of extracted segments.
 
     """
-    labels_train = []
-
     if conf.features.type == "raw":
         fps = conf.features.sr
         n_features = 1
@@ -240,8 +238,16 @@ def feature_transform(conf, mode):
             features = extract_feature(audio_path, feature_extractor, conf)
             print("Features extracted! Shape {}".format(features.shape))
 
-            path = os.path.join(meta_path, glob_cls_name, split_list[-1][:-4])
-            frames_per_recording = build_tfrecords(path, df, features, glob_cls_name, fps, seg_len_frames, hop_seg_frames)
+            path = os.path.join(conf.path.feat_train,
+                                glob_cls_name,
+                                split_list[-1][:-4])
+            frames_per_recording = build_tfrecords(
+                path,
+                df,
+                features,
+                fps,
+                seg_len_frames,
+                hop_seg_frames)
 
             num_extract += frames_per_recording
 
@@ -345,15 +351,16 @@ def check_if_negative(_start, _end):
     return True
 
 
-def build_tfrecords(parent_path, df_events, features, glob_cls_name, fps, seg_len, hop_len):
+def build_tfrecords(parent_path,
+                    df_events,
+                    features,
+                    fps,
+                    seg_len,
+                    hop_len):
     if not os.path.exists(parent_path):
         os.makedirs(parent_path)
 
-    if 'CALL' in df_events.columns:
-        classes = [glob_cls_name]
-    else:
-        classes = list(df_events.columns[3:])
-    classes += ["NEG"]
+    classes = list(df_events.columns[3:])
     print("  Classes found:", classes)
 
     total_count = 0
@@ -364,7 +371,14 @@ def build_tfrecords(parent_path, df_events, features, glob_cls_name, fps, seg_le
             print("  {} positive events...".format(len(positive_events)))
             start_frames_pos, end_frames_pos = get_start_and_end_frames(
                 positive_events, fps)
-            count_pos = write_events_from_features(tf_writer, start_frames_pos, end_frames_pos, features, seg_len, hop_len)
+            count_pos = write_events_from_features(
+                tf_writer,
+                start_frames_pos,
+                end_frames_pos,
+                features,
+                seg_len,
+                hop_len)
+
             print("  ...{} frames.".format(count_pos))
             total_count += count_pos
 
@@ -373,8 +387,15 @@ def build_tfrecords(parent_path, df_events, features, glob_cls_name, fps, seg_le
             print("  {} unknown events...".format(len(unk_events)))
             start_frames_unk, end_frames_unk = get_start_and_end_frames(
                 unk_events, fps)
-            count_unk = write_events_from_features(tf_writer, start_frames_unk, end_frames_unk, features, seg_len, hop_len)
-            print("  ...{} frames.".format(count_unk))
+            count_unk = write_events_from_features(
+                tf_writer,
+                start_frames_unk,
+                end_frames_unk,
+                features,
+                seg_len,
+                hop_len)
+
+            print("  ...{} frames.\n".format(count_unk))
             total_count += count_unk
 
     with tf.io.TFRecordWriter(os.path.join(parent_path, "neg.tfrecords")) as tf_writer:
@@ -382,8 +403,15 @@ def build_tfrecords(parent_path, df_events, features, glob_cls_name, fps, seg_le
         start_frames_neg, end_frames_neg = sample_negative_events(
             500, len(features), seg_len, False)
         print("  {} negative events...".format(len(start_frames_neg)))
-        count_neg = write_events_from_features(tf_writer, start_frames_neg, end_frames_neg, features, seg_len, hop_len)
-        print("  ...{} frames.".format(count_neg))
+        count_neg = write_events_from_features(
+            tf_writer,
+            start_frames_neg,
+            end_frames_neg,
+            features,
+            seg_len,
+            hop_len)
+
+        print("  ...{} frames.\n".format(count_neg))
         total_count += count_neg
 
     return total_count
@@ -420,20 +448,21 @@ def write_events_from_features(tf_writer, start_frames, end_frames, features,
             feature_patch_tiled = np.tile(feature_patch,
                                           (repeat_num, 1))
             feature_patch_tiled = feature_patch_tiled[:seg_len]
-            tf_writer.write(feature_patch_tiled)
+            tf_writer.write(example_from_patch(feature_patch_tiled))
             count += 1
 
         else:
             # it just fits! technically subsumed by case #2...
             feature_patch = features[start_ind:end_ind]
-            tf_writer.write(feature_patch)
+            tf_writer.write(example_from_patch(feature_patch))
             count += 1
 
     return count
 
 
 def example_from_patch(patch):
-    byte_patch = tf.io.serialize_tensor(patch)
-    feature = {"patch": tf.train.Feature(bytes_list=tf.train.BytesList(value=[byte_patch]))}
+    byte_patch = tf.io.serialize_tensor(patch).numpy()
+    feature = {"patch": tf.train.Feature(
+        bytes_list=tf.train.BytesList(value=[byte_patch]))}
     example = tf.train.Example(features=tf.train.Features(feature=feature))
     return example.SerializeToString()

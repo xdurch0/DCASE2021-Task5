@@ -37,7 +37,7 @@ def main(conf: DictConfig):
         print("--Extracting training features--")
         n_extract_train = feature_transform(conf=conf, mode="train")
         print("Total number of training samples: {}".format(n_extract_train))
-        print("Done!")
+        print("Done!\n")
 
     if conf.set.features_eval:
         if not os.path.isdir(conf.path.feat_eval):

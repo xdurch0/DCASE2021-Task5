@@ -46,14 +46,16 @@ def baseline_block(inp: tf.Tensor,
     bn = tfkl.BatchNormalization(name=scope + "_bn")(conv)
 
     if activation == "swish":
-        activated = tfkl.Activation(tf.nn.swish, name=scope + "_activation")(bn)
+        activated = tfkl.Activation(tf.nn.swish,
+                                    name=scope + "_activation")(bn)
     elif activation is None:
         activated = bn
     else:
         raise ValueError("Invalid activation {}".format(activation))
 
     if isinstance(pool_size, int) and pool_size > 1:
-        return pool_fn(pool_size, padding="same",
+        return pool_fn(pool_size,
+                       padding="same",
                        name=scope + "_pool")(activated)
     else:
         return activated
@@ -92,6 +94,9 @@ def create_baseline_model(conf: DictConfig,
         print("---Model Summary---")
         print(model.summary())
 
+        print("---Distance Model---")
+        print(distance_model.summary())
+
     return model
 
 
@@ -100,7 +105,8 @@ def preprocessing_block(conf):
 
     if conf.features.type == "raw":
         time_shape = int(round(conf.features.seg_len * conf.features.sr))
-        inp = tf.keras.Input(shape=(time_shape, 1), name="raw_input")
+        inp = tf.keras.Input(shape=(time_shape, 1),
+                             name="raw_input")
 
         if conf.model.preprocess == "mel":
             preprocessed = LogMel(conf.features.n_mels,
@@ -150,10 +156,22 @@ def preprocessing_block(conf):
 def body_block(preprocessed, conf):
     dims = conf.model.dims
 
-    b1 = baseline_block(preprocessed, 128, dims, 3, "swish", scope="block1")
-    b2 = baseline_block(b1, 128, dims, 3, "swish", scope="block2")
-    b3 = baseline_block(b2, 128, dims, 3, "swish", scope="block3")
-    b4 = baseline_block(b3, 128, dims, 3, "swish", scope="block4")
+    b1 = baseline_block(preprocessed, 128, 3,
+                        dims=dims,
+                        activation="swish",
+                        scope="block1")
+    b2 = baseline_block(b1, 128, 3,
+                        dims=dims,
+                        activation="swish",
+                        scope="block2")
+    b3 = baseline_block(b2, 128, 3,
+                        dims=dims,
+                        activation="swish",
+                        scope="block3")
+    b4 = baseline_block(b3, 128, 3,
+                        dims=dims,
+                        activation="swish",
+                        scope="block4")
 
     # TODO this does not work for 1d inputs lol
     if conf.model.pool == "all":
@@ -193,34 +211,51 @@ def distance_block(embedding_input, conf):
 
         h1 = tfkl.Dense(1024, name="dense1")(concat)
         bn1 = tfkl.BatchNormalization(name="bn1")(h1)
-        a1 = tfkl.Activation(tf.nn.swish, name="activation1")(bn1)
+        a1 = tfkl.Activation(tf.nn.swish,
+                             name="activation1")(bn1)
 
         h2 = tfkl.Dense(256, name="dense2")(a1)
         bn2 = tfkl.BatchNormalization(name="bn2")(h2)
-        a2 = tfkl.Activation(tf.nn.swish, name="activation2")(bn2)
+        a2 = tfkl.Activation(tf.nn.swish,
+                             name="activation2")(bn2)
 
         h3 = tfkl.Dense(64, name="dense3")(a2)
         bn3 = tfkl.BatchNormalization(name="bn3")(h3)
-        a3 = tfkl.Activation(tf.nn.swish, name="activation3")(bn3)
+        a3 = tfkl.Activation(tf.nn.swish,
+                             name="activation3")(bn3)
 
         h4 = tfkl.Dense(1, name="dense4")(a3)
         bn4 = tfkl.BatchNormalization(name="bn4")(h4)
-        distance = tfkl.Activation(tf.nn.softplus, name="activation4")(bn4)
+        distance = tfkl.Activation(tf.nn.softplus,
+                                   name="activation4")(bn4)
 
     elif conf.model.distance_fn == "cnn":
         concat = tfkl.Concatenate(
             name="cnn_concatenate_inputs")([distance_inp1, distance_inp2])
 
-        b1 = baseline_block(concat, 64, 3, 2, "swish", (1, 2),
-                            "cnn_distance_block1")
-        b2 = baseline_block(b1, 64, 3, 2, "swish", 1,
-                            "cnn_distance_block2")
-        b3 = baseline_block(b2, 64, 3, 2, "swish", (2, 2),
-                            "cnn_distance_block3")
-        b4 = baseline_block(b3, 64, 3, 2, "swish", 1,
-                            "cnn_distance_block4")
+        # TODO will crash if dims=1
+        b1 = baseline_block(concat, 64, 3,
+                            dims=2,
+                            activation="swish",
+                            pool_size=(1, 2),
+                            scope="cnn_distance_block1")
+        b2 = baseline_block(b1, 64, 3,
+                            dims=2,
+                            activation="swish",
+                            pool_size=1,
+                            scope="cnn_distance_block2")
+        b3 = baseline_block(b2, 64, 3,
+                            dims=2,
+                            activation="swish",
+                            pool_size=(2, 2),
+                            scope="cnn_distance_block3")
+        b4 = baseline_block(b3, 64, 3,
+                            dims=2,
+                            activation="swish",
+                            pool_size=1,
+                            scope="cnn_distance_block4")
 
-        flat = tfkl.Flatten("cnn_distance_flatten")(b4)
+        flat = tfkl.Flatten(name="cnn_distance_flatten")(b4)
         dense = tfkl.Dense(1, name="cnn_distance_to_size_1")(flat)
         bn = tfkl.BatchNormalization(name="cnn_distance_bn")(dense)
         distance = tfkl.Activation(tf.nn.softplus,

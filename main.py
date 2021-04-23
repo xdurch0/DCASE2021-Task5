@@ -35,8 +35,7 @@ def main(conf: DictConfig):
             os.makedirs(conf.path.feat_train)
 
         print("--Extracting training features--")
-        n_extract_train, data_shape = feature_transform(conf=conf, mode="train")
-        print("Shape of dataset is {}".format(data_shape))
+        n_extract_train = feature_transform(conf=conf, mode="train")
         print("Total number of training samples: {}".format(n_extract_train))
         print("Done!")
 

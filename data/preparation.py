@@ -3,12 +3,12 @@
 """
 import os
 from glob import glob
-from itertools import chain
 from typing import Tuple, Optional
 
 import h5py
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from omegaconf import DictConfig
 
 from utils.conversions import time_to_frame
@@ -71,8 +71,7 @@ def fill_complex(h5_dataset: h5py.Dataset,
                  features: np.ndarray,
                  seg_len: int,
                  hop_len: int,
-                 desired_indices: Optional[list] = None,
-                 class_list: Optional[list] = None) -> list:
+                 desired_indices: Optional[list] = None):
     n_features = features.shape[1]
 
     if len(h5_dataset[()]) == 0:
@@ -83,14 +82,9 @@ def fill_complex(h5_dataset: h5py.Dataset,
     if desired_indices is None:
         desired_indices = range(len(start_times))
 
-    if class_list is None:
-        class_list = [0] * len(start_times)  # dummy
-    label_list = []
-
     for index in desired_indices:
         start_ind = start_times[index]
         end_ind = end_times[index]
-        label = class_list[index]
 
         if end_ind - start_ind > seg_len:
             # event is longer than segment length -- got to split
@@ -102,7 +96,6 @@ def fill_complex(h5_dataset: h5py.Dataset,
                 h5_dataset.resize(
                     (file_index + 1, seg_len, n_features))
                 h5_dataset[file_index] = feature_patch
-                label_list.append(label)
                 file_index += 1
                 shift = shift + hop_len
 
@@ -111,7 +104,6 @@ def fill_complex(h5_dataset: h5py.Dataset,
             h5_dataset.resize(
                 (file_index + 1, seg_len, n_features))
             h5_dataset[file_index] = pcen_patch_last
-            label_list.append(label)
             file_index += 1
 
         elif end_ind - start_ind < seg_len:
@@ -127,7 +119,6 @@ def fill_complex(h5_dataset: h5py.Dataset,
             feature_patch_tiled = feature_patch_tiled[:seg_len]
             h5_dataset.resize((file_index + 1, seg_len, n_features))
             h5_dataset[file_index] = feature_patch_tiled
-            label_list.append(label)
             file_index += 1
 
         else:
@@ -135,64 +126,9 @@ def fill_complex(h5_dataset: h5py.Dataset,
             feature_patch = features[start_ind:end_ind]
             h5_dataset.resize((file_index + 1, seg_len, n_features))
             h5_dataset[file_index] = feature_patch
-            label_list.append(label)
             file_index += 1
 
     print("   ...Extracted {} segments so far.".format(file_index))
-    return label_list
-
-
-def create_dataset(df_events: pd.DataFrame,
-                   features: np.ndarray,
-                   glob_cls_name: str,
-                   hf: h5py.File,
-                   seg_len: int,
-                   hop_len: int,
-                   fps: float,
-                   positive: bool,
-                   start_times: Optional[list] = None,
-                   end_times: Optional[list] = None) -> list:
-    """Split the data into segments and append to hdf5 dataset.
-
-    Parameters:
-        df_events: Pandas dataframe containing events.
-        features: Features for full audio file.
-        glob_cls_name: Name of class used for audio files where only one class
-                       is present.
-        hf: hdf5 file object.
-        seg_len: Length of segments to extract.
-        hop_len: How much to advance per segment if multiple segments are needed
-                 to cover one event.
-        fps: Frames per second.
-        positive: If True, we are processing unknown events -- influences which
-                  class we assign.
-        start_times: Optional, event start times (in frames!). If not given,
-                     both start and end times will be extracted from the data
-                     frame.
-        end_times: Optional, event end times (in frames!).
-
-    Returns:
-        List of labels per extracted segment.
-
-    """
-    # we assume either both will be None, or neither!!
-    if start_times is None:
-        start_times, end_times = get_start_and_end_frames(df_events, fps)
-
-    if not positive or 'CALL' in df_events.columns:
-        class_list = [glob_cls_name] * len(start_times)
-    else:
-        class_list = [df_events.columns[(df_events == 'POS').loc[index]].values for
-                      index, row in df_events.iterrows()]
-        class_list = list(chain.from_iterable(class_list))
-
-    assert len(start_times) == len(end_times)
-    assert len(class_list) == len(start_times)
-
-    label_list = fill_complex(hf["features"], start_times, end_times, features,
-                              seg_len, hop_len, class_list=class_list)
-
-    return label_list
 
 
 def resample_all(conf: DictConfig):
@@ -293,12 +229,7 @@ def feature_transform(conf, mode):
                          for path_dir, subdir, files in os.walk(meta_path)
                          for file in glob(os.path.join(path_dir, "*.csv"))]
 
-        hdf_train_path = os.path.join(conf.path.feat_train, 'Mel_train.h5')
-        hf = h5py.File(hdf_train_path, 'w')
-        hf.create_dataset('features',
-                          shape=(0, seg_len_frames, n_features),
-                          maxshape=(None, seg_len_frames, n_features))
-
+        num_extract = 0
         for file in all_csv_files:
             split_list = file.split('/')
             glob_cls_name = split_list[split_list.index('Training_Set') + 1]
@@ -309,72 +240,12 @@ def feature_transform(conf, mode):
             features = extract_feature(audio_path, feature_extractor, conf)
             print("Features extracted! Shape {}".format(features.shape))
 
-            df_pos = df[(df == 'POS').any(axis=1)]
-            label_list = create_dataset(df_pos,
-                                        features,
-                                        glob_cls_name,
-                                        hf,
-                                        seg_len_frames,
-                                        hop_seg_frames,
-                                        fps,
-                                        positive=True)
-            labels_train.append(label_list)
-            print("Positive events added...")
+            path = os.path.join(meta_path, glob_cls_name, split_list[-1][:-4])
+            frames_per_recording = build_tfrecords(path, df, features, glob_cls_name, fps, seg_len_frames, hop_seg_frames)
 
-            # use of this is highly questionable!
-            df_unknown = df[(df != 'POS').all(axis=1)]
-            label_list = create_dataset(df_unknown,
-                                        features,
-                                        "<UNKNOWN>",
-                                        hf,
-                                        seg_len_frames,
-                                        hop_seg_frames,
-                                        fps,
-                                        positive=False)
-            labels_train.append(label_list)
-            print("Unknown events added...")
+            num_extract += frames_per_recording
 
-            # negative events
-            # 1. Define number of desired segments. Since segments will be
-            #    shuffled anyway, there is no need to think in terms of "events"
-            #    here.
-            # 2. Sample times randomly, and check that time, time+seg_len is not
-            #    in the df. Optional: resample invalid times until we got the
-            #    desired number.
-            # Currently: *No* check for whether it is actually a negative event.
-            # Anything is treated as negative. Mirrors how it's done in eval.
-            # Last change: Take *entire dataset* as negative -- not just some
-            #              number of samples.
-            if conf.features.use_negative == "all":
-                deterministic = True
-                neg_count = 0  # dummy
-            else:
-                deterministic = False
-                neg_count = conf.features.use_negative
-            start_times, end_times = sample_negative_events(
-                neg_count, len(features), seg_len_frames,
-                deterministic=deterministic)
-
-            label_list = create_dataset(df_unknown,  # ignored
-                                        features,
-                                        "<NEGATIVE>",
-                                        hf,
-                                        seg_len_frames,
-                                        hop_seg_frames,
-                                        fps,
-                                        positive=False,
-                                        start_times=start_times,
-                                        end_times=end_times)
-            labels_train.append(label_list)
-            print("Negative events added...")
-
-        num_extract = len(hf['features'])
-        flat_list = [item for sublist in labels_train for item in sublist]
-        hf.create_dataset('labels', data=[s.encode() for s in flat_list],
-                          dtype='S20')
-        data_shape = hf['features'].shape
-        hf.close()
-        return num_extract, data_shape
+        return num_extract
 
     elif mode == "eval":
         meta_path = conf.path.eval_dir
@@ -428,7 +299,7 @@ def feature_transform(conf, mode):
                          features,
                          seg_len_frames,
                          hop_seg_frames,
-                         support_indices)
+                         desired_indices=support_indices)
 
             print("Creating query dataset")
             hf.create_dataset('start_index_query', shape=(1,), maxshape=None)
@@ -472,3 +343,97 @@ def sample_negative_events(num, max_time, event_len, deterministic=False):
 
 def check_if_negative(_start, _end):
     return True
+
+
+def build_tfrecords(parent_path, df_events, features, glob_cls_name, fps, seg_len, hop_len):
+    if not os.path.exists(parent_path):
+        os.makedirs(parent_path)
+
+    if 'CALL' in df_events.columns:
+        classes = [glob_cls_name]
+    else:
+        classes = list(df_events.columns[3:])
+    classes += ["NEG"]
+    print("  Classes found:", classes)
+
+    total_count = 0
+    for cls in classes:
+        print("  Doing class", cls)
+        with tf.io.TFRecordWriter(os.path.join(parent_path, cls + "_pos.tfrecords")) as tf_writer:
+            positive_events = df_events[df_events[cls] == "POS"]
+            print("  {} positive events...".format(len(positive_events)))
+            start_frames_pos, end_frames_pos = get_start_and_end_frames(
+                positive_events, fps)
+            count_pos = write_events_from_features(tf_writer, start_frames_pos, end_frames_pos, features, seg_len, hop_len)
+            print("  ...{} frames.".format(count_pos))
+            total_count += count_pos
+
+        with tf.io.TFRecordWriter(os.path.join(parent_path, cls + "_unk.tfrecords")) as tf_writer:
+            unk_events = df_events[df_events[cls] == "UNK"]
+            print("  {} unknown events...".format(len(unk_events)))
+            start_frames_unk, end_frames_unk = get_start_and_end_frames(
+                unk_events, fps)
+            count_unk = write_events_from_features(tf_writer, start_frames_unk, end_frames_unk, features, seg_len, hop_len)
+            print("  ...{} frames.".format(count_unk))
+            total_count += count_unk
+
+    with tf.io.TFRecordWriter(os.path.join(parent_path, "neg.tfrecords")) as tf_writer:
+        # TODO no harcode
+        start_frames_neg, end_frames_neg = sample_negative_events(
+            500, len(features), seg_len, False)
+        print("  {} negative events...".format(len(start_frames_neg)))
+        count_neg = write_events_from_features(tf_writer, start_frames_neg, end_frames_neg, features, seg_len, hop_len)
+        print("  ...{} frames.".format(count_neg))
+        total_count += count_neg
+
+    return total_count
+
+
+def write_events_from_features(tf_writer, start_frames, end_frames, features,
+                               seg_len, hop_len):
+    count = 0
+    for start_ind, end_ind in zip(start_frames, end_frames):
+        if end_ind - start_ind > seg_len:
+            # event is longer than segment length -- got to split
+            shift = 0
+            while end_ind - (start_ind + shift) > seg_len:
+                feature_patch = features[(start_ind + shift):
+                                         (start_ind + shift + seg_len)]
+
+                tf_writer.write(example_from_patch(feature_patch))
+                count += 1
+                shift = shift + hop_len
+
+            feature_patch_last = features[(end_ind - seg_len):end_ind]
+            tf_writer.write(example_from_patch(feature_patch_last))
+            count += 1
+
+        elif end_ind - start_ind < seg_len:
+            # If event is shorter than segment length then tile the patch
+            # multiple times till it reaches the segment length
+            feature_patch = features[start_ind:end_ind]
+            if feature_patch.shape[0] == 0:
+                print("WARNING: 0-length patch found!")
+                continue
+
+            repeat_num = seg_len // (feature_patch.shape[0]) + 1
+            feature_patch_tiled = np.tile(feature_patch,
+                                          (repeat_num, 1))
+            feature_patch_tiled = feature_patch_tiled[:seg_len]
+            tf_writer.write(feature_patch_tiled)
+            count += 1
+
+        else:
+            # it just fits! technically subsumed by case #2...
+            feature_patch = features[start_ind:end_ind]
+            tf_writer.write(feature_patch)
+            count += 1
+
+    return count
+
+
+def example_from_patch(patch):
+    byte_patch = tf.io.serialize_tensor(patch)
+    feature = {"patch": tf.train.Feature(bytes_list=tf.train.BytesList(value=[byte_patch]))}
+    example = tf.train.Example(features=tf.train.Features(feature=feature))
+    return example.SerializeToString()

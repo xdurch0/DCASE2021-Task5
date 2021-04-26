@@ -24,7 +24,7 @@ def train_protonet(conf: DictConfig,
 
     """
     print("Preparing TF dataset...")
-    train_dataset, val_dataset, most_common = tf_dataset(conf)
+    train_dataset = tf_dataset(conf)
 
     for index in range(times):
         print("\nTraining model #{} out of {}...".format(index + 1, times))
@@ -45,24 +45,24 @@ def train_protonet(conf: DictConfig,
                       run_eagerly=conf.train.cycle_binary)
 
         callback_lr = tf.keras.callbacks.ReduceLROnPlateau(
-            factor=conf.train.scheduler_gamma,
+            factor=conf.train.scheduler_gamma, monitor="loss",
             patience=conf.train.patience, verbose=1)
         # using n times the LR reduction patience means we allow for (n-1) LR
         # reductions before stopping
         early_stopping = tf.keras.callbacks.EarlyStopping(
-            patience=3*conf.train.patience, verbose=1)
+            patience=3*conf.train.patience, verbose=1, monitor="loss")
         checkpoints = tf.keras.callbacks.ModelCheckpoint(
-            conf.path.best_model + str(index) + ".h5", verbose=1,
+            conf.path.best_model + str(index) + ".h5", verbose=1, monitor="loss",
             save_weights_only=True, save_best_only=True)
         callbacks = [callback_lr, checkpoints, early_stopping]
 
         steps_per_epoch = 100
         val_steps = 100
         history = model.fit(train_dataset,
-                            validation_data=val_dataset,
+                            #validation_data=val_dataset,
                             epochs=conf.train.epochs,
                             steps_per_epoch=steps_per_epoch,
-                            validation_steps=val_steps,
+                            #validation_steps=val_steps,
                             callbacks=callbacks)
 
         history_dict = history.history

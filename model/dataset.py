@@ -67,7 +67,8 @@ def per_class_dataset(class_to_records, batch_size):
 
 def parse_example(example):
     features = {"patch": tf.io.FixedLenFeature((1,), tf.dtypes.string)}
-    return tf.io.parse_tensor(tf.io.parse_example(example, features))
+    return tf.io.parse_tensor(tf.io.parse_example(example, features)["patch"][0],
+                              tf.float32)
 
 
 def dataset_eval(hf: h5py.File) -> Tuple[np.ndarray, np.ndarray, np.ndarray]:

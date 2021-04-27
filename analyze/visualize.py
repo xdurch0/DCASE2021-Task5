@@ -13,6 +13,7 @@ from omegaconf import DictConfig
 from scipy import interpolate
 
 from data.preparation import get_start_and_end_frames
+from data.transforms import pcen_compress
 from utils.conversions import time_to_frame
 
 
@@ -205,7 +206,7 @@ def event_lists_to_mask(start_list, end_list, mask_length, query_offset):
 
 
 def the_works(conf, file_path, model_index, threshold, mode, margin=20,
-              max_plots_per_column=2):
+              max_plots_per_column=2, feature_type="mel"):
     hdf5_file = file_path.split("/")[-1][:-4] + ".h5"
     hdf5_file = os.path.join(conf.path.feat_eval, hdf5_file)
     probs, features, query_offset = get_probs_and_frames(conf, hdf5_file,
@@ -238,6 +239,30 @@ def the_works(conf, file_path, model_index, threshold, mode, margin=20,
     else:
         raise ValueError("Sorry but that's not gonna work!!!!12121")
 
+    if feature_type == "mel":
+        plot_features = np.log(features[:, :conf.features.n_mels] + 1e-8)
+    elif feature_type == "pcen":
+        model_weights = h5py.File(
+            conf.path.best_model + str(model_index) + ".h5", mode="r")
+
+        def softplus(x):
+            return np.log(1 + np.exp(x))
+
+        gain = softplus(
+            model_weights["pcen_compress"]["pcen_compress_gain:0"][()])
+        bias = softplus(
+            model_weights["pcen_compress"]["pcen_compress_bias:0"][()])
+        power = softplus(
+            model_weights["pcen_compress"]["pcen_compress_power:0"][()])
+        eps = softplus(
+            model_weights["pcen_compress"]["pcen_compress_eps:0"][()])
+
+        plot_features = pcen_compress(features[:, :conf.features.n_mels],
+                                      features[:, conf.features.n_mels:],
+                                      gain, bias, power, eps)
+    else:
+        raise ValueError
+
     print("Found {} events of interest".format(len(of_interest)))
     cols = max_plots_per_column
     rows = ceil(len(of_interest) / cols)
@@ -246,7 +271,7 @@ def the_works(conf, file_path, model_index, threshold, mode, margin=20,
     for ind, (start, end) in enumerate(of_interest):
         show_start = np.maximum(start - query_offset - margin, 0)
         show_end = end - query_offset + margin
-        feats_show = features[show_start:show_end]
+        feats_show = plot_features[show_start:show_end]
         probs_show = probs[show_start:show_end]
 
         ax = plt.subplot(rows, cols, ind + 1)
@@ -254,7 +279,7 @@ def the_works(conf, file_path, model_index, threshold, mode, margin=20,
 
         fmax = conf.features.fmax
         librosa.display.specshow(
-            np.log(feats_show[:, :conf.features.n_mels].T + 1e-8),
+            feats_show.T,
             x_axis="frames",
             y_axis="mel",
             sr=conf.features.sr,

@@ -139,6 +139,24 @@ def pcen_lowpass(S, sr=22050, hop_length=512, time_constant=0.400, b=None,
     return S_smooth
 
 
+def pcen_compress(spectro, spectro_smooth, gain, bias, power, eps):
+    # Adaptive gain control
+    # Working in log-space gives us some stability, and a slight speedup
+    smooth = np.exp(-gain * (np.log(eps) +
+                             np.log1p(spectro_smooth / eps)))
+    # Dynamic range compression
+    # TODO add 0 cases again
+    if power == 0:
+        out = np.log1p(spectro * smooth)
+    elif bias == 0:
+        out = np.exp(power * (np.log(spectro) + np.log(smooth)))
+    else:
+        out = (bias ** power) * np.expm1(
+            power * np.log1p(spectro * smooth / bias))
+
+    return out
+
+
 def extract_feature(audio_path: str,
                     feature_extractor: Union[FeatureExtractor, RawExtractor],
                     conf: DictConfig) -> np.ndarray:

@@ -146,9 +146,9 @@ def pcen_compress(spectro, spectro_smooth, gain, bias, power, eps):
                              np.log1p(spectro_smooth / eps)))
     # Dynamic range compression
     # TODO add 0 cases again
-    if power == 0:
+    if False:
         out = np.log1p(spectro * smooth)
-    elif bias == 0:
+    elif False:
         out = np.exp(power * (np.log(spectro) + np.log(smooth)))
     else:
         out = (bias ** power) * np.expm1(

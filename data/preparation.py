@@ -174,6 +174,9 @@ def feature_transform(conf, mode):
         for file in all_csv_files:
             split_list = file.split('/')
             name = split_list[-1].split('.')[0]
+            if not os.path.exists(os.path.join(conf.path.feat_eval, name)):
+                os.makedirs(os.path.join(conf.path.feat_eval, name))
+
             audio_path = file.replace('.csv',
                                       '_{}hz.wav'.format(conf.features.sr))
 
@@ -184,7 +187,7 @@ def feature_transform(conf, mode):
 
             print("Creating negative dataset")
             negative_path = os.path.join(conf.path.feat_eval,
-                                         name + "_negative.tfrecords")
+                                         name, "negative.tfrecords")
             num_extract_eval += fill_simple(negative_path,
                                             features,
                                             seg_len_frames,
@@ -200,7 +203,7 @@ def feature_transform(conf, mode):
             start_times_support = np.array(start_times)[support_indices]
             end_times_support = np.array(end_times)[support_indices]
             positive_path = os.path.join(conf.path.feat_eval,
-                                         name + "_positive.tfrecords")
+                                         name, "positive.tfrecords")
             num_extract_eval += fill_simple(positive_path,
                                             features,
                                             seg_len_frames,
@@ -211,7 +214,7 @@ def feature_transform(conf, mode):
             print("Creating query dataset")
             start_index_query = end_times[support_indices[-1]]
             query_path = os.path.join(conf.path.feat_eval,
-                                      name + "_query.tfrecords")
+                                      name, "query.tfrecords")
             num_extract_eval += fill_simple(query_path,
                                             features,
                                             seg_len_frames,
@@ -219,7 +222,7 @@ def feature_transform(conf, mode):
                                             start_index=start_index_query)
 
             np.save(os.path.join(conf.path.feat_eval,
-                                 name + "_start_index_query.npy"),
+                                 name, "start_index_query.npy"),
                     np.int32(start_index_query))
 
         return num_extract_eval

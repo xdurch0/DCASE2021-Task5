@@ -1,6 +1,7 @@
 """Functions for evaluating trained models.
 
 """
+import os
 from typing import Tuple, Sequence
 
 import numpy as np
@@ -51,10 +52,12 @@ def get_probabilities(conf: DictConfig,
         Event probability at each segment of the query set.
 
     """
-    dataset_query = tf.data.TFRecordDataset([base_path + "_query.tfrecords"])
+    query_path = os.path.join(base_path, "query.tfrecords")
+    dataset_query = tf.data.TFRecordDataset([query_path])
     dataset_query = dataset_query.map(parse_example).batch(conf.eval.batch_size)
 
-    dataset_pos = tf.data.TFRecordDataset([base_path + "_positive.tfrecords"])
+    positive_path = os.path.join(base_path, "positive.tfrecords")
+    dataset_pos = tf.data.TFRecordDataset([positive_path])
     dataset_pos = dataset_pos.map(parse_example).batch(conf.train.n_shot)
 
     positive_embeddings = model.predict(dataset_pos)
@@ -68,8 +71,8 @@ def get_probabilities(conf: DictConfig,
         print("Iteration number {}".format(i))
         event_probabilities = []
 
-        dataset_neg = tf.data.TFRecordDataset([base_path +
-                                               "_negative.tfrecords"])
+        negative_path = os.path.join(base_path, "negative.tfrecords")
+        dataset_neg = tf.data.TFRecordDataset([negative_path])
         dataset_neg = dataset_neg.shuffle(1000000).take(conf.eval.samples_neg)
         dataset_neg = dataset_neg.map(parse_example).batch(conf.eval.batch_size)
 

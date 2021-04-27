@@ -2,10 +2,8 @@
 
 """
 import os
-from glob import glob
 
 import hydra
-import h5py
 import numpy as np
 import pandas as pd
 from omegaconf import DictConfig
@@ -58,8 +56,7 @@ def main(conf: DictConfig):
         if not os.path.isdir(conf.path.results):
             os.makedirs(conf.path.results)
 
-        all_feat_files = [file for file in glob(os.path.join(
-            conf.path.feat_eval, '*.h5'))]
+        all_feat_dirs = os.listdir(conf.path.feat_eval)
 
         for index in range(conf.set.n_runs):
             print("\nGetting probabilities for model #{} out of {}".format(
@@ -68,15 +65,15 @@ def main(conf: DictConfig):
             model = create_baseline_model(conf)
             model.load_weights(conf.path.best_model + str(index) + ".h5")
 
-            for feat_file in all_feat_files:
-                feat_name = feat_file.split('/')[-1]
-                audio_name = feat_name.replace('h5', 'wav')
+            for feat_dir in all_feat_dirs:
+                audio_name = feat_dir + 'wav'
 
                 print("Processing audio file : {}".format(audio_name))
 
-                hdf_eval = h5py.File(feat_file, 'r')
-                probs = get_probabilities(conf, hdf_eval, model)
-                hdf_eval.close()
+                probs = get_probabilities(conf,
+                                          os.path.join(conf.path.feat_eval,
+                                                       feat_dir),
+                                          model)
 
                 probs_path = os.path.join(
                     conf.path.results,
@@ -94,8 +91,7 @@ def main(conf: DictConfig):
         thresholds = np.around(np.linspace(min_thresh, max_thresh, n_threshs),
                                decimals=2)
 
-        all_feat_files = [file for file in glob(os.path.join(
-            conf.path.feat_eval, '*.h5'))]
+        all_feat_dirs = os.listdir(conf.path.feat_eval)
 
         for index in range(conf.set.n_runs):
             print("\nEvaluating model #{} out of {}".format(index + 1,
@@ -107,21 +103,23 @@ def main(conf: DictConfig):
             model = create_baseline_model(conf)
             model.load_weights(conf.path.best_model + str(index) + ".h5")
 
-            for feat_file in all_feat_files:
-                feat_name = feat_file.split('/')[-1]
-                audio_name = feat_name.replace('h5', 'wav')
+            for feat_dir in all_feat_dirs:
+                audio_name = feat_dir + ".wav"
 
                 print("Processing audio file : {}".format(audio_name))
-
-                hdf_eval = h5py.File(feat_file, 'r')
 
                 probs_path = os.path.join(
                     conf.path.results,
                     "probs_" + audio_name[:-4] + "_" + str(index) + ".npy")
                 probs = np.load(probs_path)
 
-                on_off_sets = get_events(probs, thresholds, hdf_eval, conf)
-                hdf_eval.close()
+                start_index_query = np.load(
+                    os.path.join(conf.path.feat_eval, feat_dir,
+                                 "start_index_query.npy"))
+                on_off_sets = get_events(probs,
+                                         thresholds,
+                                         start_index_query,
+                                         conf)
 
                 for thresh, (onset, offset) in on_off_sets.items():
                     name = np.repeat(audio_name, len(onset))

@@ -16,9 +16,9 @@ Usage is "almost" the same.
 | resample | If true, resample all audio files to the specified sampling rate. Must be run before the other steps.
 | features_train | If true, extract features for training set.
 | features_eval | If true, extract features for validation set.
-| make_tfrecord | Currently unused.
 | train | If true, train models.
-| eval | If true, evaluate trained models.
+| get_probs | If true, get event probabilities for the validation set.
+| eval | If true, evaluate trained models based on previously extracted probabilities.
 | n_runs | How many models to train and evaluate. Note: Will crash if trying to evaluate more models than are available.
 
 ### path
@@ -64,7 +64,7 @@ Usage is "almost" the same.
 | scheduler_gamma | Multiplication factor for learning rate decrease.
 | patience | How many epochs to wait with no validation improvement before reducing learning rate. 3 times this value is used for early stopping.
 | epochs | Maximum number of epochs to train.
-| test_split | Fraction of data to hold out for "test data" (checking overfitting during training).
+| test_split | Experimental: Name of subset to use as held-out set during training.
 | binary | If true, each episode one class is randomly chosen as "positive" and all others receive a "negative" label.
 | cycle_binary If true, binary training will cycle through classes in each batch, picking each class as positive once and averaging results. No effect if binary is false.
 | label_smoothing | Apply this amount of label smoothing to the cross-entropy loss.
@@ -84,3 +84,7 @@ Usage is "almost" the same.
 | iterations | How many iterations to average the predictions over.
 | query_batch_size | Well?
 | negative_batch_size | Guess what.
+| thresholding | `absolute` or `relative`. The latter is very bad, lol.
+| lowest_thresh | Lowest threshold to evaluate with.
+| highest_thresh | Hmmmm.
+| thresh_step | Hmmmmmmmm.

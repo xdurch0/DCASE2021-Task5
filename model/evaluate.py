@@ -3,25 +3,24 @@
 """
 from typing import Tuple, Sequence
 
-import h5py
 import numpy as np
 import tensorflow as tf
 from omegaconf import DictConfig
 
 from utils.conversions import time_to_frame
-from .dataset import dataset_eval
+from .dataset import parse_example
 
 
 def evaluate_prototypes(conf: DictConfig,
-                        hdf_eval: h5py.File,
+                        base_path: str,
                         model: tf.keras.Model,
                         thresholds: Sequence) -> Tuple[dict, np.ndarray]:
     """Run the evaluation for a single dataset.
 
     Parameters:
         conf: hydra config object.
-        hdf_eval: Open hd5 file containing positive, negative and query
-                  features.
+        base_path: Path to the preprocessed evaluation files, without
+                   extensions.
         model: The model to evaluate.
         thresholds: 1D container with all "positive" thresholds to try.
 
@@ -29,74 +28,76 @@ def evaluate_prototypes(conf: DictConfig,
         dict mapping thresholds to onsets and offsets of events.
 
     """
-    probabilities = get_probabilities(conf, hdf_eval, model)
+    probabilities = get_probabilities(conf, base_path, model)
 
     print("Ok, trying {} thresholds...".format(len(thresholds)))
-    return get_events(probabilities, thresholds, hdf_eval, conf), probabilities
+    start_index_query = np.load(base_path + "_start_index_query.npy")
+    return (get_events(probabilities, thresholds, start_index_query, conf),
+            probabilities)
 
 
 def get_probabilities(conf: DictConfig,
-                      hdf_eval: h5py.File,
+                      base_path: str,
                       model: tf.keras.Model) -> np.ndarray:
     """Run several iterations of estimating event probabilities.
 
     Parameters:
         conf: hydra config object.
-        hdf_eval: Open hd5 file containing positive, negative and query
-                  features.
+        base_path: Path to the preprocessed evaluation files, without
+                   extensions.
         model: The model to evaluate.
 
     Returns:
         Event probability at each segment of the query set.
 
     """
-    x_pos, x_neg, x_query = dataset_eval(hdf_eval)
+    dataset_query = tf.data.TFRecordDataset([base_path + "_query.tfrecords"])
+    dataset_query = dataset_query.map(parse_example).batch(conf.eval.batch_size)
 
-    dataset_query = tf.data.Dataset.from_tensor_slices(x_query)
-    dataset_query = dataset_query.batch(conf.eval.query_batch_size)
+    dataset_pos = tf.data.TFRecordDataset([base_path + "_positive.tfrecords"])
+    dataset_pos = dataset_pos.map(parse_example).batch(conf.train.n_shot)
 
-    positive_embeddings = model(x_pos)
-    positive_prototype = positive_embeddings.numpy().mean(axis=0)
+    positive_embeddings = model.predict(dataset_pos)
+    positive_prototype = positive_embeddings.mean(axis=0)
 
     probs_per_iter = []
 
-    batch_size_neg = conf.eval.negative_set_batch_size
     iterations = conf.eval.iterations
 
     for i in range(iterations):
         print("Iteration number {}".format(i))
-        prob_pos_iter = []
-        neg_indices = np.random.choice(len(x_neg), size=conf.eval.samples_neg,
-                                       replace=False)
-        negative_samples = x_neg[neg_indices]
-        negative_samples = tf.data.Dataset.from_tensor_slices(negative_samples)
-        negative_samples = negative_samples.batch(batch_size_neg)
+        event_probabilities = []
 
-        negative_embeddings = model.predict(negative_samples)
+        dataset_neg = tf.data.TFRecordDataset([base_path +
+                                               "_negative.tfrecords"])
+        dataset_neg = dataset_neg.shuffle(1000000).take(conf.eval.samples_neg)
+        dataset_neg = dataset_neg.map(parse_example).batch(conf.eval.batch_size)
+
+        negative_embeddings = model.predict(dataset_neg)
         negative_prototype = negative_embeddings.mean(axis=0)
 
         for batch in dataset_query:
             query_embeddings = model(batch)
             probability_pos = model.get_probability(
                 positive_prototype, negative_prototype, query_embeddings)
-            prob_pos_iter.extend(probability_pos)
+            event_probabilities.extend(probability_pos)
 
-        probs_per_iter.append(prob_pos_iter)
+        probs_per_iter.append(event_probabilities)
 
     return np.mean(np.array(probs_per_iter), axis=0)
 
 
 def get_events(probabilities: np.ndarray,
                thresholds: Sequence,
-               hdf_eval: h5py.File,
+               start_index_query: int,
                conf: DictConfig) -> dict:
     """Threshold event probabilities and get event onsets/offsets.
 
     Parameters:
         probabilities: Event probabilities for consecutive segments.
         thresholds: 1D container with all "positive" thresholds to try.
-        hdf_eval: Open hd5 file containing positive, negative and query
-                  features.
+        start_index_query: Frame where the query set starts, with respect to the
+                           full recording.
         conf: hydra config object.
 
     Returns:
@@ -109,7 +110,6 @@ def get_events(probabilities: np.ndarray,
         fps = conf.features.sr / conf.features.hop_mel
 
     hop_seg_frames = time_to_frame(conf.features.hop_seg, fps)
-    start_index_query = hdf_eval['start_index_query'][()][0]
     start_time_query = start_index_query / fps
 
     on_off_sets = dict()

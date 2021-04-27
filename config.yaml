@@ -58,8 +58,7 @@ model:
 eval:
   samples_neg: 650
   iterations: 10
-  query_batch_size: 256
-  negative_set_batch_size : 256
+  batch_size: 256
   thresholding: absolute
   lowest_thresh: 0.1
   highest_thresh: 0.9

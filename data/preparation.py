@@ -197,8 +197,8 @@ def feature_transform(conf, mode):
             start_times, end_times = get_start_and_end_frames(df_eval, fps)
             support_indices = np.where(q_list == 'POS')[0][:conf.train.n_shot]
 
-            start_times_support = start_times[support_indices]
-            end_times_support = end_times[support_indices]
+            start_times_support = np.array(start_times)[support_indices]
+            end_times_support = np.array(end_times)[support_indices]
             positive_path = os.path.join(conf.path.feat_eval,
                                          name + "_positive.tfrecords")
             num_extract_eval += fill_simple(positive_path,
@@ -218,7 +218,8 @@ def feature_transform(conf, mode):
                                             hop_seg_frames,
                                             start_index=start_index_query)
 
-            np.save(os.path.join(conf.path.eval, name + "_start_index_query.npy"),
+            np.save(os.path.join(conf.path.feat_eval,
+                                 name + "_start_index_query.npy"),
                     np.int32(start_index_query))
 
         return num_extract_eval

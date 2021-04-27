@@ -13,7 +13,7 @@ def train_protonet(conf: DictConfig,
                    times: int = 1):
     """Train a Prototypical Network.
 
-    Currently only the final model is stored. Training is done from scratch.
+    Training is done from scratch.
 
     Parameters:
         conf: hydra config object.
@@ -24,7 +24,13 @@ def train_protonet(conf: DictConfig,
 
     """
     print("Preparing TF dataset...")
-    train_dataset = tf_dataset(conf)
+    datasets = tf_dataset(conf)
+    if isinstance(datasets, tuple):
+        train_dataset, val_dataset = datasets
+        validate = True
+    else:
+        train_dataset = datasets
+        validate = False
 
     for index in range(times):
         print("\nTraining model #{} out of {}...".format(index + 1, times))
@@ -59,10 +65,10 @@ def train_protonet(conf: DictConfig,
         steps_per_epoch = 100
         val_steps = 100
         history = model.fit(train_dataset,
-                            #validation_data=val_dataset,
+                            validation_data=val_dataset if validate else None,
                             epochs=conf.train.epochs,
                             steps_per_epoch=steps_per_epoch,
-                            #validation_steps=val_steps,
+                            validation_steps=val_steps if validate else None,
                             callbacks=callbacks)
 
         history_dict = history.history

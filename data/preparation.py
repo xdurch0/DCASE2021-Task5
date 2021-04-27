@@ -3,9 +3,8 @@
 """
 import os
 from glob import glob
-from typing import Tuple, Optional
+from typing import Tuple, Optional, Iterable, Union
 
-import h5py
 import numpy as np
 import pandas as pd
 import tensorflow as tf
@@ -18,117 +17,28 @@ from .transforms import (resample_audio, RawExtractor, FeatureExtractor,
 pd.options.mode.chained_assignment = None
 
 
-def fill_simple(h5_file: h5py.File,
-                name: str,
+def fill_simple(target_path: str,
                 features: np.ndarray,
                 seg_len: int,
                 hop_len: int,
-                start_index: int = 0,
-                end_index: Optional[int] = None):
-    """Fill a dataset where segments simply need to be stepped through.
+                start_frames: Optional[Iterable] = None,
+                end_frames: Optional[Iterable] = None,
+                start_index: int = 0) -> int:
+    if start_frames is None:
+        start_frames = np.arange(start_index, len(features) - seg_len, hop_len)
+        end_frames = start_frames + seg_len
+        start_frames = np.concatenate(
+            (start_frames, [len(features) - seg_len]), axis=0)
+        end_frames = np.concatenate((end_frames, [len(features)]), axis=0)
 
-    Parameters:
-        h5_file: Open hdf5 file object.
-        name: The name of the dataset.
-        features: The data source.
-        seg_len: How long each segment should be.
-        hop_len: Hop size between segments.
-        start_index: Starting position of first segment.
-        end_index: End position of last segment. Can be None in which case
-                   the file is used up to the very end.
-
-    """
-    n_features = features.shape[1]
-    if end_index is None:
-        end_index = len(features)
-
-    # TODO should be able to infer size of the dataset, may be more efficient
-    h5_file.create_dataset(name, shape=(0, seg_len, n_features),
-                           maxshape=(None, seg_len, n_features))
-    h5_dataset = h5_file[name]
-
-    file_index = 0
-    while end_index - start_index > seg_len:
-        patch_neg = features[start_index:(start_index + seg_len)]
-
-        h5_dataset.resize(
-            (file_index + 1, seg_len, n_features))
-        h5_dataset[file_index] = patch_neg
-        file_index += 1
-        start_index += hop_len
-
-    last_patch = features[end_index - seg_len:end_index]
-    h5_dataset.resize(
-        (file_index + 1, seg_len, n_features))
-    h5_dataset[file_index] = last_patch
-
-    print("   ...Extracted {} segments overall.".format(file_index + 1))
-
-
-def fill_complex(h5_dataset: h5py.Dataset,
-                 start_times: list,
-                 end_times: list,
-                 features: np.ndarray,
-                 seg_len: int,
-                 hop_len: int,
-                 desired_indices: Optional[list] = None):
-    n_features = features.shape[1]
-
-    if len(h5_dataset[()]) == 0:
-        file_index = 0
-    else:
-        file_index = len(h5_dataset[()])
-
-    if desired_indices is None:
-        desired_indices = range(len(start_times))
-
-    for index in desired_indices:
-        start_ind = start_times[index]
-        end_ind = end_times[index]
-
-        if end_ind - start_ind > seg_len:
-            # event is longer than segment length -- got to split
-            shift = 0
-            while end_ind - (start_ind + shift) > seg_len:
-                feature_patch = features[(start_ind + shift):
-                                         (start_ind + shift + seg_len)]
-
-                h5_dataset.resize(
-                    (file_index + 1, seg_len, n_features))
-                h5_dataset[file_index] = feature_patch
-                file_index += 1
-                shift = shift + hop_len
-
-            pcen_patch_last = features[(end_ind - seg_len):end_ind]
-
-            h5_dataset.resize(
-                (file_index + 1, seg_len, n_features))
-            h5_dataset[file_index] = pcen_patch_last
-            file_index += 1
-
-        elif end_ind - start_ind < seg_len:
-            # If event is shorter than segment length then tile the patch
-            #  multiple times till it reaches the segment length
-            feature_patch = features[start_ind:end_ind]
-            if feature_patch.shape[0] == 0:
-                print("WARNING: 0-length patch found!")
-                continue
-
-            repeat_num = seg_len // (feature_patch.shape[0]) + 1
-            feature_patch_tiled = np.tile(feature_patch, (repeat_num, 1))
-            feature_patch_tiled = feature_patch_tiled[:seg_len]
-            h5_dataset.resize((file_index + 1, seg_len, n_features))
-            h5_dataset[file_index] = feature_patch_tiled
-            file_index += 1
-
-        else:
-            # it just fits! technically subsumed by case #2...
-            feature_patch = features[start_ind:end_ind]
-            h5_dataset.resize((file_index + 1, seg_len, n_features))
-            h5_dataset[file_index] = feature_patch
-            file_index += 1
-
-    print("   ...Extracted {} segments so far.".format(file_index))
+    with tf.io.TFRecordWriter(target_path) as writer:
+        count = write_events_from_features(writer,
+                                           start_frames,
+                                           end_frames,
+                                           features,
+                                           seg_len,
+                                           hop_len)
+    return count
 
 
 def resample_all(conf: DictConfig):
@@ -247,7 +157,8 @@ def feature_transform(conf, mode):
                 features,
                 fps,
                 seg_len_frames,
-                hop_seg_frames)
+                hop_seg_frames,
+                conf.features.use_negative)
 
             num_extract += frames_per_recording
 
@@ -263,31 +174,21 @@ def feature_transform(conf, mode):
         for file in all_csv_files:
             split_list = file.split('/')
             name = split_list[-1].split('.')[0]
-            feat_name = name + '.h5'
             audio_path = file.replace('.csv',
                                       '_{}hz.wav'.format(conf.features.sr))
 
             print("Processing file name {}".format(audio_path))
-            hdf_eval_path = os.path.join(conf.path.feat_eval, feat_name)
-            hf = h5py.File(hdf_eval_path, 'w')
-
-            hf.create_dataset('mean_global', shape=(1,), maxshape=None)
-            hf.create_dataset('std_dev_global', shape=(1,), maxshape=None)
 
             features = extract_feature(audio_path, feature_extractor, conf)
             print("Features extracted! Shape {}".format(features.shape))
-            mean = np.mean(features)
-            std = np.mean(features)
-            hf['mean_global'][:] = mean
-            hf['std_dev_global'][:] = std
 
             print("Creating negative dataset")
-            fill_simple(hf,
-                        "feat_neg",
-                        features,
-                        seg_len_frames,
-                        hop_seg_frames)
-            num_extract_eval += len(hf['feat_neg'])
+            negative_path = os.path.join(conf.path.feat_eval,
+                                         name + "_negative.tfrecords")
+            num_extract_eval += fill_simple(negative_path,
+                                            features,
+                                            seg_len_frames,
+                                            hop_seg_frames)
 
             print("Creating positive dataset")
             df_eval = pd.read_csv(file, header=0, index_col=False)
@@ -295,34 +196,30 @@ def feature_transform(conf, mode):
 
             start_times, end_times = get_start_and_end_frames(df_eval, fps)
             support_indices = np.where(q_list == 'POS')[0][:conf.train.n_shot]
-            hf.create_dataset(
-                'feat_pos', shape=(0, seg_len_frames, n_features),
-                maxshape=(None, seg_len_frames, n_features))
 
-            fill_complex(hf["feat_pos"],
-                         start_times,
-                         end_times,
-                         features,
-                         seg_len_frames,
-                         hop_seg_frames,
-                         desired_indices=support_indices)
+            start_times_support = start_times[support_indices]
+            end_times_support = end_times[support_indices]
+            positive_path = os.path.join(conf.path.feat_eval,
+                                         name + "_positive.tfrecords")
+            num_extract_eval += fill_simple(positive_path,
+                                            features,
+                                            seg_len_frames,
+                                            hop_seg_frames,
+                                            start_times_support,
+                                            end_times_support)
 
             print("Creating query dataset")
-            hf.create_dataset('start_index_query', shape=(1,), maxshape=None)
             start_index_query = end_times[support_indices[-1]]
-            hf['start_index_query'][:] = start_index_query
+            query_path = os.path.join(conf.path.feat_eval,
+                                      name + "_query.tfrecords")
+            num_extract_eval += fill_simple(query_path,
+                                            features,
+                                            seg_len_frames,
+                                            hop_seg_frames,
+                                            start_index=start_index_query)
 
-            # would be great to avoid this, as query data is basically part of
-            # the negative (all) data. However, the offset might be slightly
-            # different and so far I have not been able to get this right.
-            fill_simple(hf,
-                        "feat_query",
-                        features,
-                        seg_len_frames,
-                        hop_seg_frames,
-                        start_index=start_index_query)
-
-            hf.close()
+            np.save(os.path.join(conf.path.eval, name + "_start_index_query.npy"),
+                    np.int32(start_index_query))
 
         return num_extract_eval
 
@@ -351,12 +248,13 @@ def check_if_negative(_start, _end):
     return True
 
 
-def build_tfrecords(parent_path,
-                    df_events,
-                    features,
-                    fps,
-                    seg_len,
-                    hop_len):
+def build_tfrecords(parent_path: str,
+                    df_events: pd.DataFrame,
+                    features: np.ndarray,
+                    fps: float,
+                    seg_len: int,
+                    hop_len: int,
+                    use_negative: Union[bool, str]):
     if not os.path.exists(parent_path):
         os.makedirs(parent_path)
 
@@ -399,9 +297,15 @@ def build_tfrecords(parent_path,
             total_count += count_unk
 
     with tf.io.TFRecordWriter(os.path.join(parent_path, "neg.tfrecords")) as tf_writer:
-        # TODO no harcode
+        if use_negative == "all":
+            deterministic = True
+            use_negs = 0
+        else:
+            deterministic = False
+            use_negs = use_negative
+
         start_frames_neg, end_frames_neg = sample_negative_events(
-            500, len(features), seg_len, False)
+            use_negs, len(features), seg_len, deterministic)
         print("  {} negative events...".format(len(start_frames_neg)))
         count_neg = write_events_from_features(
             tf_writer,
@@ -417,8 +321,12 @@ def build_tfrecords(parent_path,
     return total_count
 
 
-def write_events_from_features(tf_writer, start_frames, end_frames, features,
-                               seg_len, hop_len):
+def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
+                               start_frames: Iterable,
+                               end_frames: Iterable,
+                               features: np.ndarray,
+                               seg_len: int,
+                               hop_len: int) -> int:
     count = 0
     for start_ind, end_ind in zip(start_frames, end_frames):
         if end_ind - start_ind > seg_len:
@@ -460,7 +368,7 @@ def write_events_from_features(tf_writer, start_frames, end_frames, features,
     return count
 
 
-def example_from_patch(patch):
+def example_from_patch(patch: np.ndarray):
     byte_patch = tf.io.serialize_tensor(patch).numpy()
     feature = {"patch": tf.train.Feature(
         bytes_list=tf.train.BytesList(value=[byte_patch]))}

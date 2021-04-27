@@ -2,7 +2,6 @@ set:
   resample: false
   features_train: false
   features_eval: false
-  make_tfrecord: false
   train: false
   get_probs: false
   eval: false
@@ -12,7 +11,7 @@ path:
   root_dir:  /project/jens/DCASE2021-Task5/Development_Set
   train_dir: ${path.root_dir}/Training_Set
   eval_dir:  ${path.root_dir}/Validation_Set
-  feat_path: ${path.root_dir}/FeaturesFinegrained_${features.type}
+  feat_path: ${path.root_dir}/FeaturesTFR_${features.type}
   feat_train: ${path.feat_path}/feat_train
   feat_eval:  ${path.feat_path}/feat_eval
   model: ${path.root_dir}/ModelTest
@@ -35,7 +34,7 @@ features:
   power: 0.5
   eps: 1e-6
   center: true
-  use_negative: 500
+  use_negative: all
 
 train:
   n_shot: 5
@@ -45,7 +44,7 @@ train:
   scheduler_gamma: 0.5
   patience: 3
   epochs: 100
-  test_split: 0.25
+  test_split: none
   binary: false
   cycle_binary: false
   label_smoothing: 0.

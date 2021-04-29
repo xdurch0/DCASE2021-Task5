@@ -57,6 +57,9 @@ def main(conf: DictConfig):
             os.makedirs(conf.path.results)
 
         all_feat_dirs = os.listdir(conf.path.feat_eval)
+        all_prob_storage = dict()
+        for feat_dir in all_feat_dirs:
+            all_prob_storage[feat_dir] = []
 
         for index in range(conf.set.n_runs):
             print("\nGetting probabilities for model #{} out of {}".format(
@@ -66,7 +69,7 @@ def main(conf: DictConfig):
             model.load_weights(conf.path.best_model + str(index) + ".h5")
 
             for feat_dir in all_feat_dirs:
-                audio_name = feat_dir + 'wav'
+                audio_name = feat_dir + '.wav'
 
                 print("Processing audio file : {}".format(audio_name))
 
@@ -79,6 +82,18 @@ def main(conf: DictConfig):
                     conf.path.results,
                     "probs_" + audio_name[:-4] + "_" + str(index))
                 np.save(probs_path, probs)
+
+                all_prob_storage[feat_dir].append(probs)
+
+        # ensemble probs
+        print("\nEnsembling...")
+        for feat_dir in all_feat_dirs:
+            audio_name = feat_dir + '.wav'
+            probs = np.array(all_prob_storage[feat_dir]).mean(axis=0)
+            probs_path = os.path.join(
+                conf.path.results,
+                "probs_" + audio_name[:-4] + str(conf.set.n_runs))
+            np.save(probs_path, probs)
 
     if conf.set.eval:
         if not os.path.isdir(conf.path.results):
@@ -93,15 +108,12 @@ def main(conf: DictConfig):
 
         all_feat_dirs = os.listdir(conf.path.feat_eval)
 
-        for index in range(conf.set.n_runs):
+        for index in range(conf.set.n_runs + 1):  # +1 for ensemble probs
             print("\nEvaluating model #{} out of {}".format(index + 1,
                                                             conf.set.n_runs))
             name_dict = {t: np.array([]) for t in thresholds}
             onset_dict = {t: np.array([]) for t in thresholds}
             offset_dict = {t: np.array([]) for t in thresholds}
-
-            model = create_baseline_model(conf)
-            model.load_weights(conf.path.best_model + str(index) + ".h5")
 
             for feat_dir in all_feat_dirs:
                 audio_name = feat_dir + ".wav"

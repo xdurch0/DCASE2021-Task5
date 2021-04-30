@@ -63,7 +63,7 @@ def get_probs_and_frames(conf: DictConfig,
     feat_name = tfr_path.split('/')[-1]
     prob_path = os.path.join(
         conf.path.results,
-        "probs_" + feat_name[:-3] + "_" + str(model_index) + ".npy")
+        "probs_" + feat_name + "_" + str(model_index) + ".npy")
     probs = np.load(prob_path)
 
     segment_centers = (seg_len_frames // 2 + np.arange(len(probs))
@@ -208,13 +208,9 @@ def event_lists_to_mask(start_list, end_list, mask_length, query_offset):
     return mask
 
 
-def the_works(conf, file_path, model_index, threshold, mode, margin=20,
+def the_works(probs, features, query_offset,
+              conf, file_path, model_index, threshold, mode, margin=20,
               max_plots_per_column=2, feature_type="mel"):
-    tfr_file = file_path.split("/")[-1][:-4]
-    tfr_file = os.path.join(conf.path.feat_eval, tfr_file)
-    probs, features, query_offset = get_probs_and_frames(conf, tfr_file,
-                                                         model_index)
-
     event_dict = get_event_frames(conf, file_path, model_index, threshold)
 
     pred_mask = event_lists_to_mask(*event_dict["predictions"],

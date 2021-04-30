@@ -64,12 +64,15 @@ def resample_all(conf: DictConfig):
 
 
 def get_start_and_end_frames(df: pd.DataFrame,
-                             fps: float) -> Tuple[list, list]:
+                             fps: float,
+                             add_margin: bool) -> Tuple[list, list]:
     """Convert time in seconds to frames, with a margin.
 
     Parameters:
         df: Dataframe with start and end times in seconds.
         fps: Frames per second.
+        add_margin: If True, add a short margin around event start and end
+                    times.
 
     Returns:
         Lists of start times and end times in frames.
@@ -78,7 +81,6 @@ def get_start_and_end_frames(df: pd.DataFrame,
     df.loc[:, 'Starttime'] = df['Starttime'] - 0.025
     df.loc[:, 'Endtime'] = df['Endtime'] + 0.025
 
-    # TODO is floor on both sensible??
     start_time = [time_to_frame(start, fps) for start in df['Starttime']]
 
     end_time = [time_to_frame(end, fps) for end in df['Endtime']]
@@ -128,8 +130,10 @@ def feature_transform(conf, mode):
 
     seg_len_frames = time_to_frame(conf.features.seg_len, fps)
     hop_seg_frames = time_to_frame(conf.features.hop_seg, fps)
-    print("FPS: {}. Segment length (frames): {}. Hop length (frames): "
-          "{}".format(fps, seg_len_frames, hop_seg_frames))
+    print("FPS: {} Frame length: {}. "
+          "Segment length (frames): {}. Hop length (frames): {}".format(
+              fps, conf.features.n_fft / conf.features.sr,
+              seg_len_frames, hop_seg_frames))
 
     if mode == 'train':
         meta_path = conf.path.train_dir
@@ -138,19 +142,19 @@ def feature_transform(conf, mode):
                          for file in glob(os.path.join(path_dir, "*.csv"))]
 
         num_extract = 0
-        for file in all_csv_files:
-            split_list = file.split('/')
-            glob_cls_name = split_list[split_list.index('Training_Set') + 1]
-            df = pd.read_csv(file, header=0, index_col=False)
-            audio_path = file.replace('.csv',
-                                      '_{}hz.wav'.format(conf.features.sr))
+        for train_csv in all_csv_files:
+            path_components = train_csv.split('/')
+            glob_cls_name = path_components[path_components.index('Training_Set') + 1]
+            df = pd.read_csv(train_csv, header=0, index_col=False)
+            audio_path = train_csv.replace(
+                '.csv', '_{}hz.wav'.format(conf.features.sr))
             print("Processing file name {}".format(audio_path))
             features = extract_feature(audio_path, feature_extractor, conf)
             print("Features extracted! Shape {}".format(features.shape))
 
             path = os.path.join(conf.path.feat_train,
                                 glob_cls_name,
-                                split_list[-1][:-4])
+                                path_components[-1][:-4])
             frames_per_recording = build_tfrecords(
                 path,
                 df,
@@ -171,14 +175,14 @@ def feature_transform(conf, mode):
                          for file in glob(os.path.join(path_dir, "*.csv"))]
         num_extract_eval = 0
 
-        for file in all_csv_files:
-            split_list = file.split('/')
-            name = split_list[-1].split('.')[0]
+        for eval_csv in all_csv_files:
+            path_components = eval_csv.split('/')
+            name = path_components[-1].split('.')[0]
             if not os.path.exists(os.path.join(conf.path.feat_eval, name)):
                 os.makedirs(os.path.join(conf.path.feat_eval, name))
 
-            audio_path = file.replace('.csv',
-                                      '_{}hz.wav'.format(conf.features.sr))
+            audio_path = eval_csv.replace(
+                '.csv', '_{}hz.wav'.format(conf.features.sr))
 
             print("Processing file name {}".format(audio_path))
 
@@ -194,10 +198,11 @@ def feature_transform(conf, mode):
                                             hop_seg_frames)
 
             print("Creating positive dataset")
-            df_eval = pd.read_csv(file, header=0, index_col=False)
+            df_eval = pd.read_csv(eval_csv, header=0, index_col=False)
             q_list = df_eval['Q'].to_numpy()
 
-            start_times, end_times = get_start_and_end_frames(df_eval, fps)
+            start_times, end_times = get_start_and_end_frames(df_eval, fps,
+                                                              True)
             support_indices = np.where(q_list == 'POS')[0][:conf.train.n_shot]
 
             start_times_support = np.array(start_times)[support_indices]
@@ -272,7 +277,7 @@ def build_tfrecords(parent_path: str,
             positive_events = df_events[df_events[cls] == "POS"]
             print("  {} positive events...".format(len(positive_events)))
             start_frames_pos, end_frames_pos = get_start_and_end_frames(
-                positive_events, fps)
+                positive_events, fps, True)
             count_pos = write_events_from_features(
                 tf_writer,
                 start_frames_pos,
@@ -288,7 +293,7 @@ def build_tfrecords(parent_path: str,
             unk_events = df_events[df_events[cls] == "UNK"]
             print("  {} unknown events...".format(len(unk_events)))
             start_frames_unk, end_frames_unk = get_start_and_end_frames(
-                unk_events, fps)
+                unk_events, fps, True)
             count_unk = write_events_from_features(
                 tf_writer,
                 start_frames_unk,

@@ -24,7 +24,7 @@ def get_classification_metrics(conf: DictConfig,
     all_maxfs = []
 
     if n_models is None:
-        n_models = conf.set.n_runs
+        n_models = conf.set.n_runs + 1
 
     if results_path is None:
         results_path = conf.path.results
@@ -155,7 +155,7 @@ def get_measures_from_histories(conf: DictConfig,
                                                                          list,
                                                                          list]:
     if n_models is None:
-        n_models = conf.set.n_runs
+        n_models = conf.set.n_runs + 1
 
     if model_path is None:
         model_path = conf.path.model

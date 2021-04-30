@@ -66,11 +66,12 @@ def get_probs_and_frames(conf: DictConfig,
         "probs_" + feat_name + "_" + str(model_index) + ".npy")
     probs = np.load(prob_path)
 
-    segment_centers = (seg_len_frames // 2 + np.arange(len(probs))
-                       * hop_seg_frames)
+    segment_centers = np.arange(len(probs)) * hop_seg_frames
 
     prob_interpolator = interpolate.interp1d(segment_centers, probs,
-                                             fill_value="extrapolate")
+                                             kind="previous",
+                                             fill_value=0.,
+                                             bounds_error=False)
 
     return (prob_interpolator(np.arange(len(feats_no_overlap))),
             feats_no_overlap, query_offset)
@@ -114,10 +115,11 @@ def get_event_frames(conf: DictConfig,
 
     fps = conf.features.sr / conf.features.hop_mel  # TODO raw features
     prediction_frames_start, prediction_frames_end = get_start_and_end_frames(
-        relevant_predictions, fps)
-    true_frames_start, true_frames_end = get_start_and_end_frames(true_events,
-                                                                  fps)
-    unk_frames_start, unk_frames_end = get_start_and_end_frames(unk_events, fps)
+        relevant_predictions, fps, False)
+    true_frames_start, true_frames_end = get_start_and_end_frames(
+        true_events, fps, False)
+    unk_frames_start, unk_frames_end = get_start_and_end_frames(
+        unk_events, fps, False)
 
     event_dict = dict()
     event_dict["predictions"] = (prediction_frames_start, prediction_frames_end)

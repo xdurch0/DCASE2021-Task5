@@ -189,14 +189,21 @@ def get_all_unk_events(event_dict):
     return list(zip(*event_dict["unk"]))
 
 
-def match_event_with_list(event_start, event_end, start_list, end_list):
+def match_event_with_list(event_start, event_end, start_list, end_list,
+                          min_iou=0.3):
     for other_start, other_end in zip(start_list, end_list):
         if event_start > other_end:  # too early in list, check further
             continue
         elif event_end < other_start:  # too late in list -- no match
             break
         else:
-            return True
+            iou_numerator = (np.minimum(event_end, other_end)
+                             - np.maximum(event_start, other_start))
+            iou_denominator = (np.maximum(event_end, other_end)
+                               - np.minimum(event_start, other_start))
+            iou = iou_numerator / iou_denominator
+            if iou >= min_iou:
+                return True
     return False
 
 

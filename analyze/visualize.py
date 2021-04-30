@@ -7,6 +7,7 @@ import librosa
 import librosa.display
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from IPython.display import Audio, display
 from matplotlib import pyplot as plt
 from omegaconf import DictConfig
@@ -14,11 +15,12 @@ from scipy import interpolate
 
 from data.preparation import get_start_and_end_frames
 from data.transforms import pcen_compress
+from model.dataset import parse_example
 from utils.conversions import time_to_frame
 
 
 def get_probs_and_frames(conf: DictConfig,
-                         h5_path: str,
+                         tfr_path: str,
                          model_index: int) -> Tuple[np.ndarray,
                                                     np.ndarray,
                                                     int]:
@@ -26,7 +28,8 @@ def get_probs_and_frames(conf: DictConfig,
 
     Parameters:
         conf: hydra config object.
-        h5_path: Path to hdf5 file with query set features for one audio file.
+        tfr_path: Path to tfrecords file with query set features for one audio
+                  file.
         model_index: Index of model to get probabilities from.
 
     Returns:
@@ -43,10 +46,10 @@ def get_probs_and_frames(conf: DictConfig,
            starts only after the fifth labeled event).
 
     """
-    feature_file = h5py.File(h5_path, mode="r")
-    query_feats = feature_file["feat_query"][()]
-    query_offset = int(feature_file["start_index_query"][()])
-    feature_file.close()
+    feature_data = tf.data.TFRecordDataset(
+        tfr_path + "/query.tfrecords").map(parse_example)
+    query_feats = np.asarray([thing.numpy() for thing in feature_data])
+    query_offset = np.load(tfr_path + "/start_index_query.npy")
 
     fps = conf.features.sr / conf.features.hop_mel  # TODO raw features
     hop_seg_frames = time_to_frame(conf.features.hop_seg, fps)
@@ -57,7 +60,7 @@ def get_probs_and_frames(conf: DictConfig,
         feats_no_overlap.append(segment[-hop_seg_frames:])
     feats_no_overlap = np.concatenate(feats_no_overlap, axis=0)
 
-    feat_name = h5_path.split('/')[-1]
+    feat_name = tfr_path.split('/')[-1]
     prob_path = os.path.join(
         conf.path.results,
         "probs_" + feat_name[:-3] + "_" + str(model_index) + ".npy")
@@ -207,9 +210,9 @@ def event_lists_to_mask(start_list, end_list, mask_length, query_offset):
 
 def the_works(conf, file_path, model_index, threshold, mode, margin=20,
               max_plots_per_column=2, feature_type="mel"):
-    hdf5_file = file_path.split("/")[-1][:-4] + ".h5"
-    hdf5_file = os.path.join(conf.path.feat_eval, hdf5_file)
-    probs, features, query_offset = get_probs_and_frames(conf, hdf5_file,
+    tfr_file = file_path.split("/")[-1][:-4]
+    tfr_file = os.path.join(conf.path.feat_eval, tfr_file)
+    probs, features, query_offset = get_probs_and_frames(conf, tfr_file,
                                                          model_index)
 
     event_dict = get_event_frames(conf, file_path, model_index, threshold)
@@ -331,3 +334,4 @@ def show_audios(of_interest, conf, file_path, margin=20):
 # TODO
 # defining a minimum degree of overlap required?
 # understand evaluation code to minimize discrepancies :(((
+# !!!! IOU >= 0.3 is the criterion

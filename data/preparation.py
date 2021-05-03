@@ -355,18 +355,15 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
             count += 1
 
         elif end_ind - start_ind < seg_len:
-            # If event is shorter than segment length then tile the patch
-            # multiple times till it reaches the segment length
-            feature_patch = features[start_ind:end_ind]
+            # If event is shorter than segment length then just take it ffs
+            feature_patch = features[start_ind:(start_ind + seg_len)]
             if feature_patch.shape[0] == 0:
                 print("WARNING: 0-length patch found!")
                 continue
 
-            repeat_num = seg_len // (feature_patch.shape[0]) + 1
-            feature_patch_tiled = np.tile(feature_patch,
-                                          (repeat_num, 1))
-            feature_patch_tiled = feature_patch_tiled[:seg_len]
-            tf_writer.write(example_from_patch(feature_patch_tiled))
+            assert len(feature_patch) == seg_len  # sanity check
+
+            tf_writer.write(example_from_patch(feature_patch))
             count += 1
 
         else:

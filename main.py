@@ -6,6 +6,7 @@ import os
 import hydra
 import numpy as np
 import pandas as pd
+import tensorflow as tf
 from omegaconf import DictConfig
 
 from data.preparation import feature_transform, resample_all
@@ -65,6 +66,7 @@ def main(conf: DictConfig):
             print("\nGetting probabilities for model #{} out of {}".format(
                 index + 1, conf.set.n_runs))
 
+            tf.keras.backend.clear_session()
             model = create_baseline_model(conf)
             model.load_weights(conf.path.best_model + str(index) + ".h5")
 
@@ -92,7 +94,7 @@ def main(conf: DictConfig):
             probs = np.array(all_prob_storage[feat_dir]).mean(axis=0)
             probs_path = os.path.join(
                 conf.path.results,
-                "probs_" + audio_name[:-4] + str(conf.set.n_runs))
+                "probs_" + audio_name[:-4] + "_" + str(conf.set.n_runs))
             np.save(probs_path, probs)
 
     if conf.set.eval:

@@ -53,7 +53,8 @@ def baseline_block(inp: tf.Tensor,
     else:
         raise ValueError("Invalid activation {}".format(activation))
 
-    if isinstance(pool_size, int) and pool_size > 1:
+    if ((isinstance(pool_size, int) and pool_size > 1)
+            or isinstance(pool_size, tuple)):
         return pool_fn(pool_size,
                        padding="same",
                        name=scope + "_pool")(activated)
@@ -148,6 +149,11 @@ def preprocessing_block(conf):
         preprocessed = tfkl.Reshape((-1, conf.features.n_mels, 1),
                                     name="add_channel_axis")(preprocessed)
 
+    # TODO might not work for preprocessings other than pcen_lowpass
+    if conf.model.crop > 0:
+        preprocessed = tf.keras.layers.experimental.preprocessing.RandomCrop(
+            height=time_shape-conf.model.crop, width=conf.features.n_mels,
+            name="random_crop")(preprocessed)
     preprocessed = tfkl.BatchNormalization(name="input_norm")(preprocessed)
 
     return inp, preprocessed

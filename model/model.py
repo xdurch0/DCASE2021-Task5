@@ -64,6 +64,11 @@ class BaselineProtonet(tf.keras.Model):
         else:
             self.logit_fn = self.multiclass_logit_fn
 
+        # TODO don't hardcode
+        self.crop_layer = tf.keras.layers.experimental.preprocessing.RandomCrop(
+            height=32, width=2*128,
+            name="random_crop")
+
     def process_batch_input(self,
                             data_batch: tuple,
                             k_way: Union[int, None] = None) -> Tuple[tf.Tensor,
@@ -102,7 +107,7 @@ class BaselineProtonet(tf.keras.Model):
             support = tuple(d[:self.n_support] for d in data_batch)
             query = tuple(d[self.n_support:] for d in data_batch)
 
-            support = tf.concat(support, axis=0)
+            support = tf.stack(support, axis=0)
             query = tf.concat(query, axis=0)
             #inputs_stacked = tf.concat(data_batch, axis=0)
 
@@ -131,12 +136,23 @@ class BaselineProtonet(tf.keras.Model):
         # TODO annote properly, what dimensions are what etc
 
         # extend support stacked by ALL croppings
-        support_embeddings = self(support_stacked, training=training)  # c * supp x d
+        # support stacked: c x n_support x ...
+        support_augmented = self.get_all_crops(support_stacked)
+
+        # augmented is c x 3*n_support x ...
+        # TODO if batch shape can be more than 1 axis, we can save lots of reshaping here
+        data_shape = tf.shape(support_augmented)[2:]
+        new_shape = tf.concat([[n_classes * 3*self.n_support], data_shape], axis=0)
+
+        support_stacked = tf.reshape(support_augmented, new_shape)
+        support_embeddings = self(support_stacked, training=training)  # c * (augmented_supp) x d
+
         # random crop on query set here instead of in architecture
+        query_stacked = self.crop_layer(query_stacked, training=training)
         query_set = self(query_stacked, training=training)  # c * query x d
 
         embedding_shape = tf.shape(support_embeddings)[1:]
-        stacked_shape = tf.concat([[n_classes, self.n_support],
+        stacked_shape = tf.concat([[n_classes, 3*self.n_support],
                                    embedding_shape],
                                   axis=0)
         support_set = tf.reshape(support_embeddings, stacked_shape)
@@ -170,12 +186,12 @@ class BaselineProtonet(tf.keras.Model):
         """
         # process input as one batch of size
         #  b = n_classes * (n_support + n_query)
-        inputs_stacked, n_classes = self.process_batch_input(data,
+        support, query, n_classes = self.process_batch_input(data,
                                                              k_way=self.k_way)
 
         with tf.GradientTape() as tape:
             loss, logits, labels = self.proto_compute_loss(
-                inputs_stacked, n_classes, training=True)
+                support, query, n_classes, training=True)
 
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
@@ -195,10 +211,10 @@ class BaselineProtonet(tf.keras.Model):
             Dictionary of current metrics.
 
         """
-        inputs_stacked, n_classes = self.process_batch_input(data)
+        support, query, n_classes = self.process_batch_input(data)
 
         loss, logits, labels = self.proto_compute_loss(
-            inputs_stacked, n_classes, training=False)
+            support, query, n_classes, training=False)
 
         self.compiled_metrics.update_state(labels, logits)
         return {m.name: m.result() for m in self.metrics}
@@ -374,6 +390,14 @@ class BaselineProtonet(tf.keras.Model):
         labels = total_labels.concat()
 
         return logits, labels
+
+    def get_all_crops(self, inputs):
+        # TODO generalize...
+        left = inputs[:, :, :32]
+        mid = inputs[:, :, 1:33]
+        right = inputs[:, :, 2:]
+
+        return tf.concat([left, mid, right], axis=1)
 
 
 def euclidean_distance(inputs):

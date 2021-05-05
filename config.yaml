@@ -14,10 +14,10 @@ path:
   feat_path: ${path.root_dir}/FeaturesNoTile_${features.type}
   feat_train: ${path.feat_path}/feat_train
   feat_eval:  ${path.feat_path}/feat_eval
-  model: ${path.root_dir}/ModelTest
+  model: ${path.root_dir}/ModelTestBra
   best_model: ${path.model}/best_model
   last_model: ${path.model}/last_model
-  results: ${path.root_dir}/ResultsTest
+  results: ${path.root_dir}/ResultsTestBra
 
 features:
   type: pcen_lowpass

@@ -58,9 +58,12 @@ def get_probabilities(conf: DictConfig,
 
     positive_path = os.path.join(base_path, "positive.tfrecords")
     dataset_pos = tf.data.TFRecordDataset([positive_path])
-    dataset_pos = dataset_pos.map(parse_example).batch(conf.train.n_shot)
+    dataset_pos = dataset_pos.map(parse_example)#.batch(conf.eval.batch_size)
 
-    positive_embeddings = model.predict(dataset_pos)
+    pos_entries = np.array([thing for thing in iter(dataset_pos)])
+    pos_entries = model.get_all_crops(pos_entries[None])[0]
+
+    positive_embeddings = model(pos_entries)
     positive_prototype = positive_embeddings.mean(axis=0)
 
     probs_per_iter = []

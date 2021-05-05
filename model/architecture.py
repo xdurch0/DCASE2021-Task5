@@ -129,7 +129,9 @@ def preprocessing_block(conf):
     elif conf.features.type == "pcen_lowpass":
         fps = conf.features.sr / conf.features.hop_mel
         time_shape = int((conf.features.seg_len * fps))
-        inp = tf.keras.Input(shape=(time_shape, 2*conf.features.n_mels),
+        # TODO don't hardcode cropping of 2
+        # also do for other feature types
+        inp = tf.keras.Input(shape=(time_shape-2, 2*conf.features.n_mels),
                              name="pcen_lowpass_input")
         preprocessed = PCENCompression(n_channels=conf.features.n_mels,
                                        gain=conf.features.gain,
@@ -149,11 +151,6 @@ def preprocessing_block(conf):
         preprocessed = tfkl.Reshape((-1, conf.features.n_mels, 1),
                                     name="add_channel_axis")(preprocessed)
 
-    # TODO might not work for preprocessings other than pcen_lowpass
-    if conf.model.crop > 0:
-        preprocessed = tf.keras.layers.experimental.preprocessing.RandomCrop(
-            height=time_shape-conf.model.crop, width=conf.features.n_mels,
-            name="random_crop")(preprocessed)
     preprocessed = tfkl.BatchNormalization(name="input_norm")(preprocessed)
 
     return inp, preprocessed

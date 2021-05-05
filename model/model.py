@@ -67,6 +67,7 @@ class BaselineProtonet(tf.keras.Model):
     def process_batch_input(self,
                             data_batch: tuple,
                             k_way: Union[int, None] = None) -> Tuple[tf.Tensor,
+                                                                     tf.Tensor,
                                                                      int]:
         """Stack zipped data batches into a single one.
 
@@ -98,12 +99,18 @@ class BaselineProtonet(tf.keras.Model):
 
             n_classes = k_way
         else:
-            inputs_stacked = tf.concat(data_batch, axis=0)
+            support = tuple(d[:self.n_support] for d in data_batch)
+            query = tuple(d[self.n_support:] for d in data_batch)
 
-        return inputs_stacked, n_classes
+            support = tf.concat(support, axis=0)
+            query = tf.concat(query, axis=0)
+            #inputs_stacked = tf.concat(data_batch, axis=0)
+
+        return support, query, n_classes
 
     def proto_compute_loss(self,
-                           inputs_stacked: tf.Tensor,
+                           support_stacked: tf.Tensor,
+                           query_stacked: tf.Tensor,
                            n_classes: Union[int, tf.Tensor],
                            training: bool = False) -> Tuple[tf.Tensor,
                                                             tf.Tensor,
@@ -121,22 +128,18 @@ class BaselineProtonet(tf.keras.Model):
             labels: Labels as constructed from the batch information.
 
         """
-        embeddings_stacked = self(inputs_stacked, training=training)
+        # TODO annote properly, what dimensions are what etc
 
-        embedding_shape = tf.shape(embeddings_stacked)[1:]
-        stacked_shape = tf.concat([[n_classes, self.n_support + self.n_query],
+        # extend support stacked by ALL croppings
+        support_embeddings = self(support_stacked, training=training)  # c * supp x d
+        # random crop on query set here instead of in architecture
+        query_set = self(query_stacked, training=training)  # c * query x d
+
+        embedding_shape = tf.shape(support_embeddings)[1:]
+        stacked_shape = tf.concat([[n_classes, self.n_support],
                                    embedding_shape],
                                   axis=0)
-        query_set_shape = tf.concat([[n_classes * self.n_query],
-                                     embedding_shape],
-                                    axis=0)
-
-        # assumes that embeddings are 1D, so stacked thingy is a
-        #  matrix (b x d)
-        embeddings_per_class = tf.reshape(embeddings_stacked, stacked_shape)
-        support_set = embeddings_per_class[:, :self.n_support]
-        query_set = embeddings_per_class[:, self.n_support:]
-        query_set = tf.reshape(query_set, query_set_shape)
+        support_set = tf.reshape(support_embeddings, stacked_shape)
 
         # n_classes x d
         prototypes = tf.reduce_mean(support_set, axis=1)

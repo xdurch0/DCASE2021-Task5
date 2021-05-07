@@ -68,6 +68,7 @@ class BaselineProtonet(tf.keras.Model):
         self.crop_layer = tf.keras.layers.experimental.preprocessing.RandomCrop(
             height=32, width=2*128,
             name="random_crop")
+        self.crop_layer.build((34, 256, 1))
 
     def process_batch_input(self,
                             data_batch: tuple,
@@ -83,14 +84,17 @@ class BaselineProtonet(tf.keras.Model):
                    output!
 
         Returns:
-            inputs_stacked: Single tensor where first dimension is
-                            n_classes*batch_size_per_class.
+            support: n_classes x n_support x ...
+            query: n_classes*n_query x ... Note that this has a different shape
+                   than support!! The first dimension is all examples of the
+                   first class, followed by all of the second class, etc.
             n_classes: How many classes there are in the output.
 
         """
         n_classes = len(data_batch)
 
         if k_way:
+            raise NotImplementedError("k-way currently not supported.")
             inputs_stacked = tf.stack(data_batch, axis=0)
             class_picks = tf.random.shuffle(
                 tf.range(n_classes, dtype=tf.int32))[:k_way]
@@ -109,7 +113,6 @@ class BaselineProtonet(tf.keras.Model):
 
             support = tf.stack(support, axis=0)
             query = tf.concat(query, axis=0)
-            #inputs_stacked = tf.concat(data_batch, axis=0)
 
         return support, query, n_classes
 
@@ -123,7 +126,8 @@ class BaselineProtonet(tf.keras.Model):
         """Compute the training loss for the Prototypical Network.
 
         Parameters:
-            inputs_stacked: As returned by process_batch_input.
+            support_stacked: As returned by process_batch_input.
+            query_stacked: See above,
             n_classes: See above.
             training: Whether to run model in training mode (batch norm etc.).
 
@@ -133,29 +137,33 @@ class BaselineProtonet(tf.keras.Model):
             labels: Labels as constructed from the batch information.
 
         """
-        # TODO annote properly, what dimensions are what etc
+        # TODO annotate properly, what dimensions are what etc
 
         # extend support stacked by ALL croppings
-        # support stacked: c x n_support x ...
         support_augmented = self.get_all_crops(support_stacked)
 
-        # augmented is c x 3*n_support x ...
+        # augmented is c x n_croppings*n_support x ...
         # TODO if batch shape can be more than 1 axis, we can save lots of reshaping here
+        # TODO the 3* is magic number -- currently multiplication factor due to 3 crops
         data_shape = tf.shape(support_augmented)[2:]
         new_shape = tf.concat([[n_classes * 3*self.n_support], data_shape], axis=0)
 
         support_stacked = tf.reshape(support_augmented, new_shape)
-        support_embeddings = self(support_stacked, training=training)  # c * (augmented_supp) x d
-
-        # random crop on query set here instead of in architecture
-        query_stacked = self.crop_layer(query_stacked, training=training)
-        query_set = self(query_stacked, training=training)  # c * query x d
+        support_embeddings = self(support_stacked, training=training)  # c * (n_augmented_supp) x d
 
         embedding_shape = tf.shape(support_embeddings)[1:]
+        # TODO number!!!
         stacked_shape = tf.concat([[n_classes, 3*self.n_support],
                                    embedding_shape],
                                   axis=0)
         support_set = tf.reshape(support_embeddings, stacked_shape)
+
+        # random crop on query set here instead of in architecture
+        # TODO harcoded shapes :(
+        query_stacked.set_shape((None, 34, 256))
+        query_stacked = self.crop_layer(
+            query_stacked[..., None], training=training)[..., 0]
+        query_set = self(query_stacked, training=training)  # c * query x d
 
         # n_classes x d
         prototypes = tf.reduce_mean(support_set, axis=1)

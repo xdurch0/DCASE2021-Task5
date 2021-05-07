@@ -52,19 +52,22 @@ def get_probabilities(conf: DictConfig,
         Event probability at each segment of the query set.
 
     """
+    def crop_fn(x): return model.crop_layer(x, training=False)
+
     query_path = os.path.join(base_path, "query.tfrecords")
     dataset_query = tf.data.TFRecordDataset([query_path])
-    dataset_query = dataset_query.map(parse_example).batch(conf.eval.batch_size)
+    dataset_query = dataset_query.map(
+        parse_example).batch(conf.eval.batch_size).map(crop_fn)
 
     positive_path = os.path.join(base_path, "positive.tfrecords")
     dataset_pos = tf.data.TFRecordDataset([positive_path])
-    dataset_pos = dataset_pos.map(parse_example)#.batch(conf.eval.batch_size)
+    dataset_pos = dataset_pos.map(parse_example)
 
-    pos_entries = np.array([thing for thing in iter(dataset_pos)])
+    pos_entries = np.array([entry for entry in iter(dataset_pos)])
     pos_entries = model.get_all_crops(pos_entries[None])[0]
 
-    positive_embeddings = model(pos_entries)
-    positive_prototype = positive_embeddings.mean(axis=0)
+    positive_embeddings = model(pos_entries, training=False)
+    positive_prototype = tf.reduce_mean(positive_embeddings, axis=0)
 
     probs_per_iter = []
 
@@ -77,13 +80,14 @@ def get_probabilities(conf: DictConfig,
         negative_path = os.path.join(base_path, "negative.tfrecords")
         dataset_neg = tf.data.TFRecordDataset([negative_path])
         dataset_neg = dataset_neg.shuffle(1000000).take(conf.eval.samples_neg)
-        dataset_neg = dataset_neg.map(parse_example).batch(conf.eval.batch_size)
+        dataset_neg = dataset_neg.map(
+            parse_example).batch(conf.eval.batch_size).map(crop_fn)
 
         negative_embeddings = model.predict(dataset_neg)
         negative_prototype = negative_embeddings.mean(axis=0)
 
         for batch in dataset_query:
-            query_embeddings = model(batch)
+            query_embeddings = model(batch, training=False)
             probability_pos = model.get_probability(
                 positive_prototype, negative_prototype, query_embeddings)
             event_probabilities.extend(probability_pos)

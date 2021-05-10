@@ -56,6 +56,10 @@ class BaselineProtonet(tf.keras.Model):
         self.cycle_binary = cycle_binary
         self.distance_fn = distance_fn
 
+        self.num_channels = 128 # magic number!!
+        self.crop_size = 2
+        self.num_lowpass = 2
+
         if binary_training:
             if cycle_binary:
                 self.logit_fn = self.cycle_binary_logit_fn
@@ -66,9 +70,9 @@ class BaselineProtonet(tf.keras.Model):
 
         # TODO don't hardcode
         self.crop_layer = tf.keras.layers.experimental.preprocessing.RandomCrop(
-            height=32, width=2*128,
+            height=34 - self.crop_size, width=self.num_lowpass*self.num_channels,
             name="random_crop")
-        self.crop_layer.build((34, 256, 1))
+        self.crop_layer.build((34, self.num_lowpass*self.num_channels, 1))
 
     def process_batch_input(self,
                             data_batch: tuple,
@@ -146,21 +150,21 @@ class BaselineProtonet(tf.keras.Model):
         # TODO if batch shape can be more than 1 axis, we can save lots of reshaping here
         # TODO the 3* is magic number -- currently multiplication factor due to 3 crops
         data_shape = tf.shape(support_augmented)[2:]
-        new_shape = tf.concat([[n_classes * 3*self.n_support], data_shape], axis=0)
+        new_shape = tf.concat([[n_classes * (self.crop_size + 1)*self.n_support], data_shape], axis=0)
 
         support_stacked = tf.reshape(support_augmented, new_shape)
         support_embeddings = self(support_stacked, training=training)  # c * (n_augmented_supp) x d
 
         embedding_shape = tf.shape(support_embeddings)[1:]
-        # TODO number!!!
-        stacked_shape = tf.concat([[n_classes, 3*self.n_support],
+        # TODO magic number!!!
+        stacked_shape = tf.concat([[n_classes, (self.crop_size + 1)*self.n_support],
                                    embedding_shape],
                                   axis=0)
         support_set = tf.reshape(support_embeddings, stacked_shape)
 
         # random crop on query set here instead of in architecture
         # TODO harcoded shapes :(
-        query_stacked.set_shape((None, 34, 256))
+        query_stacked.set_shape((None, 34, self.num_lowpass*self.num_channels))
         query_stacked = self.crop_layer(
             query_stacked[..., None], training=training)[..., 0]
         query_set = self(query_stacked, training=training)  # c * query x d

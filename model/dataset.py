@@ -61,7 +61,10 @@ def tf_dataset(conf: DictConfig) -> Union[tf.data.Dataset,
             is_unk = False
 
         if is_unk:
-            map_to_fill["unk"].append(record_path)
+            if conf.features.skip_unk:
+                continue
+            else:
+                map_to_fill["unk"].append(record_path)
         else:
             map_to_fill[label].append(record_path)
 

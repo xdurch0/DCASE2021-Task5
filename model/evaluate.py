@@ -52,7 +52,8 @@ def get_probabilities(conf: DictConfig,
         Event probability at each segment of the query set.
 
     """
-    def crop_fn(x): return model.crop_layer(x, training=False)
+    # def crop_fn(x): return model.crop_layer(x, training=False)
+    def crop_fn(x): return x[:, 1:-1]
 
     query_path = os.path.join(base_path, "query.tfrecords")
     dataset_query = tf.data.TFRecordDataset([query_path])

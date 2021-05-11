@@ -14,7 +14,7 @@ from omegaconf import DictConfig
 from scipy import interpolate
 
 from data.preparation import get_start_and_end_frames
-from data.transforms import pcen_compress
+from data.transforms import pcen_compress, FeatureExtractor, extract_feature
 from model.dataset import parse_example
 from utils.conversions import time_to_frame
 
@@ -336,21 +336,12 @@ def show_audios(of_interest, conf, file_path, margin=20):
 
 
 def get_frames_training(conf: DictConfig,
-                        tfr_path: str) -> np.ndarray:
-    """Like get_probs_and_frames but for training set, no predictions."""
-    feature_data = tf.data.TFRecordDataset(
-        tfr_path).map(parse_example)
-    feats = np.asarray([thing.numpy() for thing in feature_data])
+                        audio_path: str) -> np.ndarray:
+    feature_extractor = FeatureExtractor(conf)
+    audio_path = audio_path[:-4] + "_{}hz.wav".format(conf.features.sr)
+    features = extract_feature(audio_path, feature_extractor, conf)
 
-    fps = conf.features.sr / conf.features.hop_mel  # TODO raw features
-    hop_seg_frames = time_to_frame(conf.features.hop_seg, fps)
-
-    feats_no_overlap = [feats[0]]
-    for segment in feats[1:]:
-        feats_no_overlap.append(segment[-hop_seg_frames:])
-    feats_no_overlap = np.concatenate(feats_no_overlap, axis=0)
-
-    return feats_no_overlap
+    return features
 
 
 def get_event_frames_training(conf: DictConfig,
@@ -376,9 +367,8 @@ def get_event_frames_training(conf: DictConfig,
     return event_dict
 
 
-def the_works_training(features,
-              conf, file_path, model_index, threshold, mode, margin=20,
-              max_plots_per_column=2, feature_type="mel"):
+def the_works_training(features, conf, file_path, model_index, threshold, mode,
+                       margin=20, max_plots_per_column=2, feature_type="mel"):
     event_dict = get_event_frames_training(conf, file_path)
 
     true_mask = event_lists_to_mask(*event_dict["true"],

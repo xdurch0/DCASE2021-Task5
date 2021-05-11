@@ -345,14 +345,19 @@ def get_frames_training(conf: DictConfig,
 
 
 def get_event_frames_training(conf: DictConfig,
-                              file_path: str) -> dict:
+                              file_path: str,
+                              cls=None) -> dict:
     """Subsumed by other function... TODO remove"""
     true_event_path = os.path.join(conf.path.train_dir, file_path)
     true_events_with_unk = pd.read_csv(true_event_path[:-4] + ".csv")
-    true_events = true_events_with_unk[
-        (true_events_with_unk == 'POS').any(axis=1)]
-    unk_events = true_events_with_unk[
-        (true_events_with_unk == "UNK").any(axis=1)]
+    if cls is None:
+        true_events = true_events_with_unk[
+            (true_events_with_unk == 'POS').any(axis=1)]
+        unk_events = true_events_with_unk[
+            (true_events_with_unk == "UNK").any(axis=1)]
+    else:
+        true_events = true_events_with_unk[true_events_with_unk[cls] == "POS"]
+        unk_events = true_events_with_unk[true_events_with_unk[cls] == "UNK"]
 
     fps = conf.features.sr / conf.features.hop_mel  # TODO raw features
     true_frames_start, true_frames_end = get_start_and_end_frames(
@@ -367,9 +372,10 @@ def get_event_frames_training(conf: DictConfig,
     return event_dict
 
 
-def the_works_training(features, conf, file_path, model_index, threshold, mode,
-                       margin=20, max_plots_per_column=2, feature_type="mel"):
-    event_dict = get_event_frames_training(conf, file_path)
+def the_works_training(features, conf, file_path, model_index, mode,
+                       margin=20, max_plots_per_column=2, feature_type="mel",
+                       plot_max=100, cls=None):
+    event_dict = get_event_frames_training(conf, file_path, cls)
 
     true_mask = event_lists_to_mask(*event_dict["true"],
                                     len(features),
@@ -384,6 +390,7 @@ def the_works_training(features, conf, file_path, model_index, threshold, mode,
         of_interest = get_all_unk_events(event_dict)
     else:
         raise ValueError("Sorry but that's not gonna work!!!!12121")
+    of_interest = of_interest[:plot_max]
 
     if feature_type == "mel":
         plot_features = np.log(features[:, :conf.features.n_mels] + 1e-8)
@@ -436,9 +443,6 @@ def the_works_training(features, conf, file_path, model_index, threshold, mode,
         x_shift = np.arange(len(feats_show), dtype=np.float32)
         x_shift += 0.5
 
-        ax2.plot([0, len(feats_show)], [threshold * fmax, threshold * fmax],
-                 "r--")
-
         true_show = true_mask[show_start:show_end]
         unk_show = unk_mask[show_start:show_end]
 
@@ -450,7 +454,7 @@ def the_works_training(features, conf, file_path, model_index, threshold, mode,
 
     plt.show()
 
-    show_audios(of_interest, conf, file_path, margin)
+    #show_audios(of_interest, conf, file_path, margin)
 
 
 # TODO

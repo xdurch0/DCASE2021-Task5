@@ -10,7 +10,7 @@ import pandas as pd
 import tensorflow as tf
 from omegaconf import DictConfig
 
-from utils.conversions import time_to_frame
+from utils.conversions import time_to_frame, EVENT_ESTIMATES, correct_events
 from .transforms import (resample_audio, RawExtractor, FeatureExtractor,
                          extract_feature)
 
@@ -275,6 +275,11 @@ def build_tfrecords(parent_path: str,
             print("  {} positive events...".format(len(positive_events)))
             start_frames_pos, end_frames_pos = get_start_and_end_frames(
                 positive_events, fps, True)
+
+            if cls in EVENT_ESTIMATES:
+                starts_and_ends = [correct_events(sta, end, cls) for sta, end in zip(start_frames_pos, end_frames_pos)]
+                start_frames_pos, end_frames_pos = zip(*starts_and_ends)
+
             count_pos = write_events_from_features(
                 tf_writer,
                 start_frames_pos,
@@ -286,6 +291,7 @@ def build_tfrecords(parent_path: str,
             print("  ...{} frames.".format(count_pos))
             total_count += count_pos
 
+        # TODO should possibly correct UNK frames as well if we decide to use them
         with tf.io.TFRecordWriter(os.path.join(parent_path, cls + "_unk.tfrecords")) as tf_writer:
             unk_events = df_events[df_events[cls] == "UNK"]
             print("  {} unknown events...".format(len(unk_events)))

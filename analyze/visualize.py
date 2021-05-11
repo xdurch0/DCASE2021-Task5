@@ -53,7 +53,6 @@ def get_probs_and_frames(conf: DictConfig,
 
     fps = conf.features.sr / conf.features.hop_mel  # TODO raw features
     hop_seg_frames = time_to_frame(conf.features.hop_seg, fps)
-    seg_len_frames = time_to_frame(conf.features.seg_len, fps)
 
     feats_no_overlap = [query_feats[0]]
     for segment in query_feats[1:]:
@@ -334,6 +333,134 @@ def show_audios(of_interest, conf, file_path, margin=20):
         display_audio = Audio(audio_snippet, rate=conf.features.sr)
         print("Audio for event #{}".format(ind))
         display(display_audio)
+
+
+def get_frames_training(conf: DictConfig,
+                        tfr_path: str) -> np.ndarray:
+    """Like get_probs_and_frames but for training set, no predictions."""
+    feature_data = tf.data.TFRecordDataset(
+        tfr_path).map(parse_example)
+    feats = np.asarray([thing.numpy() for thing in feature_data])
+
+    fps = conf.features.sr / conf.features.hop_mel  # TODO raw features
+    hop_seg_frames = time_to_frame(conf.features.hop_seg, fps)
+
+    feats_no_overlap = [feats[0]]
+    for segment in feats[1:]:
+        feats_no_overlap.append(segment[-hop_seg_frames:])
+    feats_no_overlap = np.concatenate(feats_no_overlap, axis=0)
+
+    return feats_no_overlap
+
+
+def get_event_frames_training(conf: DictConfig,
+                              file_path: str) -> dict:
+    """Subsumed by other function... TODO remove"""
+    true_event_path = os.path.join(conf.path.train_dir, file_path)
+    true_events_with_unk = pd.read_csv(true_event_path[:-4] + ".csv")
+    true_events = true_events_with_unk[
+        (true_events_with_unk == 'POS').any(axis=1)]
+    unk_events = true_events_with_unk[
+        (true_events_with_unk == "UNK").any(axis=1)]
+
+    fps = conf.features.sr / conf.features.hop_mel  # TODO raw features
+    true_frames_start, true_frames_end = get_start_and_end_frames(
+        true_events, fps, False)
+    unk_frames_start, unk_frames_end = get_start_and_end_frames(
+        unk_events, fps, False)
+
+    event_dict = dict()
+    event_dict["true"] = (true_frames_start, true_frames_end)
+    event_dict["unk"] = (unk_frames_start, unk_frames_end)
+
+    return event_dict
+
+
+def the_works_training(features,
+              conf, file_path, model_index, threshold, mode, margin=20,
+              max_plots_per_column=2, feature_type="mel"):
+    event_dict = get_event_frames_training(conf, file_path)
+
+    true_mask = event_lists_to_mask(*event_dict["true"],
+                                    len(features),
+                                    0)
+    unk_mask = event_lists_to_mask(*event_dict["unk"],
+                                   len(features),
+                                   0)
+
+    if mode == "all_trues":
+        of_interest = get_all_true_events(event_dict)
+    elif mode == "all_unks":
+        of_interest = get_all_unk_events(event_dict)
+    else:
+        raise ValueError("Sorry but that's not gonna work!!!!12121")
+
+    if feature_type == "mel":
+        plot_features = np.log(features[:, :conf.features.n_mels] + 1e-8)
+    elif feature_type == "pcen":
+        model_weights = h5py.File(
+            conf.path.best_model + str(model_index) + ".h5", mode="r")
+
+        def softplus(x):
+            return np.log(1 + np.exp(x))
+
+        gain = softplus(
+            model_weights["pcen_compress"]["pcen_compress_gain:0"][()])
+        bias = softplus(
+            model_weights["pcen_compress"]["pcen_compress_bias:0"][()])
+        power = softplus(
+            model_weights["pcen_compress"]["pcen_compress_power:0"][()])
+        eps = softplus(
+            model_weights["pcen_compress"]["pcen_compress_eps:0"][()])
+
+        plot_features = pcen_compress(features[:, :conf.features.n_mels],
+                                      features[:, conf.features.n_mels:],
+                                      gain, bias, power, eps)
+    else:
+        raise ValueError
+
+    print("Found {} events of interest".format(len(of_interest)))
+    cols = max_plots_per_column
+    rows = ceil(len(of_interest) / cols)
+    plt.figure(figsize=(cols*10, rows*6))
+
+    for ind, (start, end) in enumerate(of_interest):
+        show_start = np.maximum(start - margin, 0)
+        show_end = end + margin
+        feats_show = plot_features[show_start:show_end]
+
+        ax = plt.subplot(rows, cols, ind + 1)
+        ax.set_title("Event #{}".format(ind))
+
+        fmax = conf.features.fmax
+        librosa.display.specshow(
+            feats_show.T,
+            x_axis="frames",
+            y_axis="mel",
+            sr=conf.features.sr,
+            hop_length=conf.features.hop_mel,
+            fmax=fmax,
+            cmap="magma")
+
+        ax2 = ax.twinx()
+        x_shift = np.arange(len(feats_show), dtype=np.float32)
+        x_shift += 0.5
+
+        ax2.plot([0, len(feats_show)], [threshold * fmax, threshold * fmax],
+                 "r--")
+
+        true_show = true_mask[show_start:show_end]
+        unk_show = unk_mask[show_start:show_end]
+
+        # don't harcode these lol
+        ax2.plot(x_shift, true_show * 9000, "g.")
+        ax2.plot(x_shift, unk_show * 8000, "y.")
+
+        plt.ylim(0, fmax)
+
+    plt.show()
+
+    show_audios(of_interest, conf, file_path, margin)
 
 
 # TODO

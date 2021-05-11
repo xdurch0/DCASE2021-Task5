@@ -120,14 +120,10 @@ def feature_transform(conf, mode):
     """
     if conf.features.type == "raw":
         fps = conf.features.sr
-        n_features = 1
         feature_extractor = RawExtractor(conf)
     else:
         fps = conf.features.sr / conf.features.hop_mel
-        n_features = conf.features.n_mels
         feature_extractor = FeatureExtractor(conf)
-    if conf.features.type == "pcen_lowpass":
-        n_features *= 2
 
     seg_len_frames = time_to_frame(conf.features.seg_len, fps)
     hop_seg_frames = time_to_frame(conf.features.hop_seg, fps)

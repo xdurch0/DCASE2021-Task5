@@ -129,9 +129,9 @@ def preprocessing_block(conf):
     elif conf.features.type == "pcen_lowpass":
         fps = conf.features.sr / conf.features.hop_mel
         time_shape = int((conf.features.seg_len * fps))
-        # TODO don't hardcode cropping of 2
-        # also do for other feature types
-        inp = tf.keras.Input(shape=(time_shape-2, 2*conf.features.n_mels),
+        # TODO acknowledge cropping for other feature types
+        inp = tf.keras.Input(shape=(time_shape - conf.model.crop,
+                                    2*conf.features.n_mels),
                              name="pcen_lowpass_input")
         preprocessed = PCENCompression(n_channels=conf.features.n_mels,
                                        gain=conf.features.gain,

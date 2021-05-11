@@ -56,9 +56,7 @@ class BaselineProtonet(tf.keras.Model):
         self.cycle_binary = cycle_binary
         self.distance_fn = distance_fn
 
-        self.num_channels = 128 # magic number!!
         self.crop_size = 2
-        self.num_lowpass = 2
 
         if binary_training:
             if cycle_binary:
@@ -70,9 +68,12 @@ class BaselineProtonet(tf.keras.Model):
 
         # TODO don't hardcode
         self.crop_layer = tf.keras.layers.experimental.preprocessing.RandomCrop(
-            height=34 - self.crop_size, width=self.num_lowpass*self.num_channels,
+            height=self.input_shape[1],
+            width=self.input_shape[2],
             name="random_crop")
-        self.crop_layer.build((34, self.num_lowpass*self.num_channels, 1))
+        self.crop_layer.build((self.input_shape[1] + self.crop_size,
+                               self.input_shape[2],
+                               1))
 
     def process_batch_input(self,
                             data_batch: tuple,
@@ -98,17 +99,18 @@ class BaselineProtonet(tf.keras.Model):
         n_classes = len(data_batch)
 
         if k_way:
-            raise NotImplementedError("k-way currently not supported.")
             inputs_stacked = tf.stack(data_batch, axis=0)
             class_picks = tf.random.shuffle(
                 tf.range(n_classes, dtype=tf.int32))[:k_way]
             inputs_stacked = tf.gather(inputs_stacked, class_picks)
 
-            feature_shape = tf.shape(inputs_stacked)[-2:]
-            stacked_shape = tf.concat(
-                [[k_way * (self.n_support + self.n_query)], feature_shape],
+            stacked_query_shape = tf.concat(
+                [[k_way * self.n_query], self.input_shape[1:]],
                 axis=0)
-            inputs_stacked = tf.reshape(inputs_stacked, stacked_shape)
+
+            support = inputs_stacked[:, :self.n_support]
+            query = inputs_stacked[:, self.n_support:]
+            query = tf.reshape(query, stacked_query_shape)
 
             n_classes = k_way
         else:
@@ -141,30 +143,29 @@ class BaselineProtonet(tf.keras.Model):
             labels: Labels as constructed from the batch information.
 
         """
-        # TODO annotate properly, what dimensions are what etc
-
         # extend support stacked by ALL croppings
         support_augmented = self.get_all_crops(support_stacked)
 
         # augmented is c x n_croppings*n_support x ...
         # TODO if batch shape can be more than 1 axis, we can save lots of reshaping here
         # TODO the 3* is magic number -- currently multiplication factor due to 3 crops
-        data_shape = tf.shape(support_augmented)[2:]
-        new_shape = tf.concat([[n_classes * (self.crop_size + 1)*self.n_support], data_shape], axis=0)
+        new_shape = tf.concat(
+            [[n_classes * (self.crop_size + 1)*self.n_support],
+             self.input_shape[1:]],
+            axis=0)
 
         support_stacked = tf.reshape(support_augmented, new_shape)
         support_embeddings = self(support_stacked, training=training)  # c * (n_augmented_supp) x d
 
-        embedding_shape = tf.shape(support_embeddings)[1:]
-        # TODO magic number!!!
-        stacked_shape = tf.concat([[n_classes, (self.crop_size + 1)*self.n_support],
-                                   embedding_shape],
-                                  axis=0)
+        stacked_shape = tf.concat(
+            [[n_classes, (self.crop_size + 1)*self.n_support],
+             self.output_shape[1:]],
+            axis=0)
         support_set = tf.reshape(support_embeddings, stacked_shape)
 
         # random crop on query set here instead of in architecture
-        # TODO harcoded shapes :(
-        query_stacked.set_shape((None, 34, self.num_lowpass*self.num_channels))
+        # TODO maybe not necessary anymore?
+        query_stacked.set_shape(self.input_shape)
         query_stacked = self.crop_layer(
             query_stacked[..., None], training=training)[..., 0]
         query_set = self(query_stacked, training=training)  # c * query x d

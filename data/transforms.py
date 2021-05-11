@@ -15,6 +15,7 @@ class RawExtractor:
         self.center = conf.features.center
         self.pad_len = conf.features.n_fft // 2
 
+    # TODO no padding here you dummy
     def extract_feature(self, audio: np.ndarray) -> np.ndarray:
         if self.center:
             audio = np.pad(audio, self.pad_len, mode="reflect")

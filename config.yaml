@@ -36,6 +36,7 @@ features:
   center: true
   use_negative: all
   skip_unk: true
+  neg_by_recording: false
 
 train:
   n_shot: 5

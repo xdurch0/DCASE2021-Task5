@@ -78,7 +78,7 @@ def get_start_and_end_frames(df: pd.DataFrame,
         Lists of start times and end times in frames.
 
     """
-    margin = 0.025 if add_margin else 0.
+    margin = 1 / fps if add_margin else 0.
     df.loc[:, 'Starttime'] = df['Starttime'] - margin
     df.loc[:, 'Endtime'] = df['Endtime'] + margin
 

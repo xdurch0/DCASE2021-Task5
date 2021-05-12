@@ -130,10 +130,10 @@ def get_events(probabilities: np.ndarray,
         onset_segments, offset_segments = get_on_and_offsets(thresholded_probs)
 
         # TODO why +1???
-        onset_times = (onset_segments + 1) * hop_seg_frames / fps
+        onset_times = onset_segments * hop_seg_frames / fps
         onset_times = onset_times + start_time_query
 
-        offset_times = (offset_segments + 1) * hop_seg_frames / fps
+        offset_times = offset_segments * hop_seg_frames / fps
         offset_times = offset_times + start_time_query
 
         on_off_sets[threshold] = (onset_times, offset_times)

@@ -245,13 +245,13 @@ class PCENCompression(tfkl.Layer):
             dtype=tf.float32,
             name=self.name + "_eps")
 
-    def call(self, inputs: tf.Tensor, **kwargs) -> tf.Tensor:
+    def call(self, inputs: list, **kwargs) -> tf.Tensor:
         gain = tf.nn.softplus(self.gain)
         power = tf.nn.softplus(self.power)
         bias = tf.nn.softplus(self.bias)
         eps = tf.nn.softplus(self.eps)
 
-        spectro, spectro_smooth = tf.split(inputs, 2, axis=-1)
+        spectro, spectro_smooth = inputs
         # Adaptive gain control
         # Working in log-space gives us some stability, and a slight speedup
         smooth = tf.exp(-gain * (tf.math.log(eps) +

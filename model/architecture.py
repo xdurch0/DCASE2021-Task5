@@ -151,16 +151,28 @@ def preprocessing_block(conf):
     elif conf.features.type == "pcen_lowpass":
         fps = conf.features.sr / conf.features.hop_mel
         time_shape = int((conf.features.seg_len * fps))
+
+        time_constant = conf.features.time_constant
+        if isinstance(time_constant, float):
+            time_constant = [time_constant]
+        else:
+            time_constant = [float(t.strip()) for t in time_constant.split(",")]
+
         # TODO acknowledge cropping for other feature types
         inp = tf.keras.Input(shape=(time_shape - conf.model.crop,
-                                    2*conf.features.n_mels),
+                                    (len(time_constant) + 1)*conf.features.n_mels),
                              name="pcen_lowpass_input")
-        preprocessed = PCENCompression(n_channels=conf.features.n_mels,
-                                       gain=conf.features.gain,
-                                       power=conf.features.power,
-                                       bias=conf.features.bias,
-                                       eps=conf.features.eps,
-                                       name="pcen_compress")(inp)
+
+        split_inps = tf.split(inp, len(time_constant) + 1, axis=-1)
+        compressed_per_tc = []
+        for tc_ind in range(len(time_constant)):
+            compressed_per_tc.append(PCENCompression(n_channels=conf.features.n_mels,
+                                           gain=conf.features.gain,
+                                           power=conf.features.power,
+                                           bias=conf.features.bias,
+                                           eps=conf.features.eps,
+                                           name="pcen_compress" + str(tc_ind))([split_inps[0], split_inps[tc_ind + 1]]))
+        preprocessed = tf.stack(compressed_per_tc, axis=-1)
 
     else:  # PCEN or Mel
         fps = conf.features.sr / conf.features.hop_mel
@@ -169,7 +181,7 @@ def preprocessing_block(conf):
                              name="spectrogram_input")
         preprocessed = inp
 
-    if dims == 2:
+    if dims == 2 and len(preprocessed.shape) == 3:
         preprocessed = tfkl.Reshape((-1, conf.features.n_mels, 1),
                                     name="add_channel_axis")(preprocessed)
 

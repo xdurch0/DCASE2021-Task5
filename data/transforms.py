@@ -34,7 +34,11 @@ class FeatureExtractor:
 
         self.type = conf.features.type
 
-        self.time_constant = conf.features.time_constant
+        time_constant = conf.features.time_constant
+        if isinstance(time_constant, float):
+            self.time_constant = [time_constant]
+        else:
+            self.time_constant = [float(t.strip()) for t in time_constant.split(",")]
         self.pcen_power = conf.features.power
         self.bias = conf.features.bias
         self.gain = conf.features.gain
@@ -53,6 +57,7 @@ class FeatureExtractor:
                                                   power=1,
                                                   center=self.center)
         if self.type == "pcen":
+            # TODO adapt for multiple time constants
             features = librosa.core.pcen(mel_spec,
                                          sr=self.sr,
                                          hop_length=self.hop,
@@ -63,11 +68,12 @@ class FeatureExtractor:
                                          eps=self.eps)
 
         elif self.type == "pcen_lowpass":
-            features = pcen_lowpass(mel_spec,
-                                    sr=self.sr,
-                                    hop_length=self.hop,
-                                    time_constant=self.time_constant)
-            features = np.concatenate([mel_spec, features], axis=0)
+
+            features = [pcen_lowpass(mel_spec,
+                                     sr=self.sr,
+                                     hop_length=self.hop,
+                                     time_constant=t) for t in self.time_constant]
+            features = np.concatenate([mel_spec] + features, axis=0)
 
         elif self.type == "logmel":
             features = np.log(mel_spec**2 + 1e-8)

@@ -10,12 +10,30 @@ from .model import (euclidean_distance, squared_euclidean_distance,
 tfkl = tf.keras.layers
 
 
+def squeeze_excite(inp: tf.Tensor,
+                   reduction_factor: int = 8,
+                   scope: str = ""):
+    # TODO adapt to 1D?
+    inp_filters = inp.shape[-1]
+    reduction_filters = inp_filters // reduction_factor
+
+    pooled = tfkl.GlobalAvgPool2D(name=scope + "_pool")(inp)
+    compressed = tfkl.Dense(reduction_filters, name=scope + "_dense1")(pooled)
+    acted = tfkl.Activation(tf.nn.swish, name=scope + "_act")(compressed)
+    expand = tfkl.Dense(inp_filters, name=scope + "_dense2")(acted)
+    gate = tfkl.Activation(tf.nn.sigmoid, name=scope + "_sigmoid")(expand)
+    gate = tfkl.Reshape((1, 1, inp_filters), name=scope + "_reshape")(gate)
+
+    return inp * gate
+
+
 def baseline_block(inp: tf.Tensor,
                    filters: int,
                    filter_size: int,
                    dims: int,
                    activation: Optional[str] = None,
                    pool_size: Union[int, tuple] = 2,
+                   use_se: bool = False,
                    scope: str = "") -> tf.Tensor:
     """Calculate a simple convolution block.
 
@@ -26,6 +44,7 @@ def baseline_block(inp: tf.Tensor,
         dims: 2 or 1, for 2D or 1D convolution/pooling.
         activation: None or string identifier for activation.
         pool_size: Size of max pooling region. If int, use quadratic window.
+        use_se: If True, apply squeeze-and-excite block after activation.
         scope: String to append to component names.
 
     Returns:
@@ -52,6 +71,9 @@ def baseline_block(inp: tf.Tensor,
         activated = bn
     else:
         raise ValueError("Invalid activation {}".format(activation))
+
+    if use_se:
+        activated = squeeze_excite(activated, scope=scope + "_se")
 
     if ((isinstance(pool_size, int) and pool_size > 1)
             or isinstance(pool_size, tuple)):
@@ -162,18 +184,22 @@ def body_block(preprocessed, conf):
     b1 = baseline_block(preprocessed, 128, 3,
                         dims=dims,
                         activation="swish",
+                        use_se=conf.model.squeeze_excite,
                         scope="block1")
     b2 = baseline_block(b1, 128, 3,
                         dims=dims,
                         activation="swish",
+                        use_se=conf.model.squeeze_excite,
                         scope="block2")
     b3 = baseline_block(b2, 128, 3,
                         dims=dims,
                         activation="swish",
+                        use_se=conf.model.squeeze_excite,
                         scope="block3")
     b4 = baseline_block(b3, 128, 3,
                         dims=dims,
                         activation="swish",
+                        use_se=conf.model.squeeze_excite,
                         scope="block4")
 
     # TODO this does not work for 1d inputs lol
@@ -206,6 +232,16 @@ def distance_block(embedding_input, conf):
         flat2 = tfkl.Flatten(name="flatten2")(distance_inp2)
         distance = tfkl.Lambda(squared_euclidean_distance,
                                name="squared_euclidean")([flat1, flat2])
+
+    elif conf.model.distance_fn == "euclid_weighted":
+        flat1 = tfkl.Flatten(name="flatten1")(distance_inp1)
+        flat2 = tfkl.Flatten(name="flatten2")(distance_inp2)
+        squared_diff = tfkl.Lambda(lambda x, y: (x - y)**2,
+                                   name="squared_difference")([flat1, flat2])
+        weighted = tfkl.Dense(
+            1, kernel_initializer=tf.keras.initializers.ones(),
+            use_bias=False)(squared_diff)
+        distance = tfkl.Lambda(lambda x: tf.math.sqrt(x), name="root")(weighted)
 
     elif conf.model.distance_fn == "mlp":
         flat1 = tfkl.Flatten(name="flatten1")(distance_inp1)
@@ -241,21 +277,25 @@ def distance_block(embedding_input, conf):
                             dims=2,
                             activation="swish",
                             pool_size=(1, 2),
+                            use_se=conf.model.squeeze_excite,
                             scope="cnn_distance_block1")
         b2 = baseline_block(b1, 64, 3,
                             dims=2,
                             activation="swish",
                             pool_size=1,
+                            use_se=conf.model.squeeze_excite,
                             scope="cnn_distance_block2")
         b3 = baseline_block(b2, 64, 3,
                             dims=2,
                             activation="swish",
                             pool_size=(2, 2),
+                            use_se=conf.model.squeeze_excite,
                             scope="cnn_distance_block3")
         b4 = baseline_block(b3, 64, 3,
                             dims=2,
                             activation="swish",
                             pool_size=1,
+                            use_se=conf.model.squeeze_excite,
                             scope="cnn_distance_block4")
 
         flat = tfkl.Flatten(name="cnn_distance_flatten")(b4)

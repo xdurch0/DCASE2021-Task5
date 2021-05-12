@@ -66,6 +66,8 @@ def tf_dataset(conf: DictConfig) -> Union[tf.data.Dataset,
             else:
                 map_to_fill["unk"].append(record_path)
         else:
+            if conf.features.neg_by_recording and label == "neg":
+                label = record_path.split("/")[-2] + "_neg"
             map_to_fill[label].append(record_path)
 
     print("\nUsing {} classes for training.".format(

@@ -40,8 +40,8 @@ features:
 
 train:
   n_shot: 5
-  n_query: 15
-  k_way : 20
+  n_query: 5
+  k_way : 10
   lr: 0.0001
   scheduler_gamma: 0.5
   patience: 3

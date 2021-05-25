@@ -108,7 +108,7 @@ class BaselineProtonet(tf.keras.Model):
 
                 # TODO don't hardcode
                 if mask_mode:
-                    stacked_query_shape = [k_way * self.n.query, 34]
+                    stacked_query_shape = [k_way * self.n_query, 34]
                 else:
                     stacked_query_shape = [k_way * self.n_query, 34, 256]
 
@@ -179,10 +179,14 @@ class BaselineProtonet(tf.keras.Model):
         support_set = tf.reshape(support_embeddings, stacked_shape)
 
         # add axis in mask for feature dimension in support set
-        # we assume there is only one!!
-        masked_support = sup_mask_augmented[..., None] * support_set
+        # we assume there are exactly two!!
+        masked_support = sup_mask_augmented[..., None, None] * support_set
+        negative_masked_support = tf.cast(tf.math.logical_not(tf.cast(sup_mask_augmented, tf.bool)), tf.float32)[..., None, None] * support_set
+        negative_prototype = tf.reduce_mean(negative_masked_support, axis=[0,1,2])
+
         # n_classes x d, average over support set as well as time axis
         prototypes = tf.reduce_mean(masked_support, axis=[1, 2])
+        prototypes = tf.concat([negative_prototype[None], prototypes])
 
         # random crop on query set here instead of in architecture
         query_stacked = self.crop_layer(
@@ -191,17 +195,17 @@ class BaselineProtonet(tf.keras.Model):
 
         # TODO don't hardcode, maybe adapt to random cropping
         # this is n_classes * n_query x 32
-        query_mask = query_mask[:, 1:-1]
+        query_mask = tf.cast(query_mask[:, 1:-1], tf.int32)
 
         # masks are all 1-0, so here we assign a different label to each class
         # TODO for this to quite make sense, NEGATIVE class has to be label 0?
-        labels = tf.repeat(tf.range(n_classes, dtype=tf.int32),
+        labels = tf.repeat(tf.range(1, n_classes+1, dtype=tf.int32),
                            repeats=[self.n_query])
         labels = query_mask * labels[:, None]
 
         # idea: if we reshape both query and labels such that time axis becomes
         # part of "batch axis", we can use the following code as-is??
-        query_set = tf.reshape(query_set, [-1] + self.output_shape[1:])
+        query_set = tf.reshape(query_set, (-1,) + self.output_shape[2:])
         labels = tf.reshape(labels, [-1])
 
         logits, labels = self.logit_fn(query_set, prototypes, labels,
@@ -277,7 +281,7 @@ class BaselineProtonet(tf.keras.Model):
                                      repeats=tf.shape(prototypes)[0],
                                      axis=0)
 
-        ndims = len(prototypes.shape)
+        ndims = 3 # TODO magic number
         prototypes_tiled = tf.tile(prototypes,
                                    [tf.shape(queries)[0]] + (ndims - 1) * [1])
 

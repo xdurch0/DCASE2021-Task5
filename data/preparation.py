@@ -359,7 +359,7 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
                     # exception: if the event is quite short but barely padded
                     # above segment length by the margin, there may already
                     # be margin at the end, which should be masked as 0.
-                    mask = np.zeros_like(feature_patch)
+                    mask = np.zeros(feature_patch.shape[0], dtype=np.float32)
                     up_to = np.minimum(len(mask), margin_frames + actual_length)
                     mask[margin_frames:up_to] = 1.
                 else:
@@ -380,7 +380,7 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
                     # margin_length - margin_frames = 46 - 5 = 41
                     # -> 1 margin, correct
 
-                    mask = np.zeros_like(feature_patch)
+                    mask = np.zeros(feature_patch.shape[0], dtype=np.float32)
                     from_ = shift if shift < margin_frames else 0
 
                     seg_end = shift + len(mask)
@@ -396,7 +396,7 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
             feature_patch_last = features[(end_margin - seg_len):end_margin]
 
             # in case of short events, there may be margin in the beginning
-            mask = np.zeros_like(feature_patch_last)
+            mask = np.zeros(feature_patch_last.shape[0], dtype=np.float32)
             from_ = np.maximum(0, len(mask) - (actual_length + margin_frames))
             mask[from_:-margin_frames] = 1.
 
@@ -414,7 +414,7 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
             assert len(feature_patch) == seg_len  # sanity check
 
             # mask the actual event, without margins
-            mask = np.zeros_like(feature_patch)
+            mask = np.zeros(feature_patch.shape[0], dtype=np.float32)
             mask[margin_frames:(actual_length + margin_frames)] = 1.
 
             tf_writer.write(example_from_patch(feature_patch, mask))

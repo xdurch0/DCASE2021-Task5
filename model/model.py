@@ -186,7 +186,7 @@ class BaselineProtonet(tf.keras.Model):
 
         # n_classes x d, average over support set as well as time axis
         prototypes = tf.reduce_mean(masked_support, axis=[1, 2])
-        prototypes = tf.concat([negative_prototype[None], prototypes])
+        prototypes = tf.concat([negative_prototype[None], prototypes], axis=0)
 
         # random crop on query set here instead of in architecture
         query_stacked = self.crop_layer(

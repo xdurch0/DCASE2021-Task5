@@ -11,24 +11,24 @@ path:
   root_dir:  /project/jens/DCASE2021-Task5/Development_Set
   train_dir: ${path.root_dir}/Training_Set
   eval_dir:  ${path.root_dir}/Validation_Set
-  feat_path: ${path.root_dir}/FeaturesMultiTC_${features.type}
+  feat_path: ${path.root_dir}/FeaturesSeg_${features.type}
   feat_train: ${path.feat_path}/feat_train
   feat_eval:  ${path.feat_path}/feat_eval
-  model: ${path.root_dir}/ModelMultiTC
+  model: ${path.root_dir}/ModelSeg
   best_model: ${path.model}/best_model
   last_model: ${path.model}/last_model
-  results: ${path.root_dir}/ResultsMultiTC
+  results: ${path.root_dir}/ResultsSeg
 
 features:
   type: pcen_lowpass
   seg_len: 0.200
-  hop_seg: 0.050
+  hop_seg: 0.100
   fmax: 11025
   sr: 22050
   n_fft: 1024
   n_mels: 128
   hop_mel: 128
-  time_constant: 0.03, 0.06, 0.2, 0.4, 1.
+  time_constant: 0.2
   gain: 0.98
   bias: 2.
   power: 0.5
@@ -41,7 +41,7 @@ features:
 train:
   n_shot: 5
   n_query: 15
-  k_way : 0
+  k_way : 20
   lr: 0.0001
   scheduler_gamma: 0.5
   patience: 3

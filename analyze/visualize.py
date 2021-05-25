@@ -114,11 +114,11 @@ def get_event_frames(conf: DictConfig,
 
     fps = conf.features.sr / conf.features.hop_mel  # TODO raw features
     prediction_frames_start, prediction_frames_end = get_start_and_end_frames(
-        relevant_predictions, fps, False)
+        relevant_predictions, fps)
     true_frames_start, true_frames_end = get_start_and_end_frames(
-        true_events, fps, False)
+        true_events, fps)
     unk_frames_start, unk_frames_end = get_start_and_end_frames(
-        unk_events, fps, False)
+        unk_events, fps)
 
     event_dict = dict()
     event_dict["predictions"] = (prediction_frames_start, prediction_frames_end)
@@ -361,9 +361,9 @@ def get_event_frames_training(conf: DictConfig,
 
     fps = conf.features.sr / conf.features.hop_mel  # TODO raw features
     true_frames_start, true_frames_end = get_start_and_end_frames(
-        true_events, fps, False)
+        true_events, fps)
     unk_frames_start, unk_frames_end = get_start_and_end_frames(
-        unk_events, fps, False)
+        unk_events, fps)
 
     event_dict = dict()
     event_dict["true"] = (true_frames_start, true_frames_end)

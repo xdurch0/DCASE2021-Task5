@@ -106,16 +106,22 @@ def per_class_dataset(class_to_records: Dict[str, list],
         AUTOTUNE)
 
 
-def parse_example(example: tf.train.Example) -> tf.Tensor:
+def parse_example(example: tf.train.Example) -> Tuple[tf.Tensor, tf.Tensor]:
     """Parse TFRecords data.
 
     Parameters:
         example: Single example from TFRecords dataset.
 
     Returns:
-        The parsed tensor.
+        The parsed tensors.
 
     """
-    features = {"patch": tf.io.FixedLenFeature((1,), tf.dtypes.string)}
-    parsed_bytes = tf.io.parse_example(example, features)["patch"][0]
-    return tf.io.parse_tensor(parsed_bytes, tf.float32)
+    features = {"patch": tf.io.FixedLenFeature((1,), tf.dtypes.string),
+                "mask": tf.io.FixedLenFeature((1,), tf.dtypes.string)}
+    parsed_example = tf.io.parse_example(example, features)
+
+    parsed_bytes_patch = parsed_example["patch"][0]
+    parsed_bytes_mask = parsed_example["mask"][0]
+
+    return (tf.io.parse_tensor(parsed_bytes_patch, tf.float32),
+            tf.io.parse_tensor(parsed_bytes_mask, tf.float32))

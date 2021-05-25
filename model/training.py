@@ -42,10 +42,10 @@ def train_protonet(conf: DictConfig,
             from_logits=True, label_smoothing=conf.train.label_smoothing)
 
         metrics = [tf.metrics.SparseCategoricalAccuracy()]
-        if False:  # conf.train.k_way == 0 or conf.train.binary:
-            metrics.append(ConfusionMatrix(
-                n_classes=2 if conf.train.binary else 21,  # TODO baaad
-                name="confusion_matrix"))
+        # if conf.train.k_way == 0 or conf.train.binary:
+        #    metrics.append(ConfusionMatrix(
+        #        n_classes=2 if conf.train.binary else 21,
+        #        name="confusion_matrix"))
 
         model.compile(optimizer=opt, loss=loss_fn, metrics=metrics,
                       run_eagerly=conf.train.cycle_binary)

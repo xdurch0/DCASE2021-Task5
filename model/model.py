@@ -56,7 +56,7 @@ class BaselineProtonet(tf.keras.Model):
         self.cycle_binary = cycle_binary
         self.distance_fn = distance_fn
 
-        self.crop_size = 2
+        self.crop_size = 2  # TODO MAGIC NUMBER
 
         if binary_training:
             if cycle_binary:
@@ -66,7 +66,6 @@ class BaselineProtonet(tf.keras.Model):
         else:
             self.logit_fn = self.multiclass_logit_fn
 
-        # TODO don't hardcode
         self.crop_layer = tf.keras.layers.experimental.preprocessing.RandomCrop(
             height=self.input_shape[1],
             width=self.input_shape[2],
@@ -78,6 +77,8 @@ class BaselineProtonet(tf.keras.Model):
     def process_batch_input(self,
                             data_batch: tuple,
                             k_way: Union[int, None] = None) -> Tuple[tf.Tensor,
+                                                                     tf.Tensor,
+                                                                     tf.Tensor,
                                                                      tf.Tensor,
                                                                      int]:
         """Stack zipped data batches into a single one.
@@ -98,33 +99,45 @@ class BaselineProtonet(tf.keras.Model):
         """
         n_classes = len(data_batch)
 
-        if k_way:
-            inputs_stacked = tf.stack(data_batch, axis=0)
-            class_picks = tf.random.shuffle(
-                tf.range(n_classes, dtype=tf.int32))[:k_way]
-            inputs_stacked = tf.gather(inputs_stacked, class_picks)
+        def amazing_subfunction(inp, n_classes, mask_mode=False):
+            if k_way:
+                inputs_stacked = tf.stack(inp, axis=0)
+                class_picks = tf.random.shuffle(
+                    tf.range(n_classes, dtype=tf.int32))[:k_way]
+                inputs_stacked = tf.gather(inputs_stacked, class_picks)
 
-            stacked_query_shape = tf.concat(
-                [[k_way * self.n_query], self.input_shape[1:]],
-                axis=0)
+                # TODO don't hardcode
+                if mask_mode:
+                    stacked_query_shape = [k_way * self.n.query, 34]
+                else:
+                    stacked_query_shape = [k_way * self.n_query, 34, 256]
 
-            support = inputs_stacked[:, :self.n_support]
-            query = inputs_stacked[:, self.n_support:]
-            query = tf.reshape(query, stacked_query_shape)
+                support = inputs_stacked[:, :self.n_support]
+                query = inputs_stacked[:, self.n_support:]
+                query = tf.reshape(query, stacked_query_shape)
 
-            n_classes = k_way
-        else:
-            support = tuple(d[:self.n_support] for d in data_batch)
-            query = tuple(d[self.n_support:] for d in data_batch)
+                n_classes = k_way
+            else:
+                support = tuple(d[:self.n_support] for d in inp)
+                query = tuple(d[self.n_support:] for d in inp)
 
-            support = tf.stack(support, axis=0)
-            query = tf.concat(query, axis=0)
+                support = tf.stack(support, axis=0)
+                query = tf.concat(query, axis=0)
 
-        return support, query, n_classes
+            return support, query, n_classes
+
+        inputs = [d[0] for d in data_batch]
+        masks = [d[1] for d in data_batch]
+        inp_support, inp_query, n_classes = amazing_subfunction(inputs, n_classes)
+        mask_support, mask_query, _ = amazing_subfunction(masks, n_classes, True)
+
+        return inp_support, inp_query, mask_support, mask_query, n_classes
 
     def proto_compute_loss(self,
                            support_stacked: tf.Tensor,
                            query_stacked: tf.Tensor,
+                           support_mask: tf.Tensor,
+                           query_mask: tf.Tensor,
                            n_classes: Union[int, tf.Tensor],
                            training: bool = False) -> Tuple[tf.Tensor,
                                                             tf.Tensor,
@@ -134,6 +147,8 @@ class BaselineProtonet(tf.keras.Model):
         Parameters:
             support_stacked: As returned by process_batch_input.
             query_stacked: See above,
+            support_mask: Yes.
+            query_mask: Indeed.
             n_classes: See above.
             training: Whether to run model in training mode (batch norm etc.).
 
@@ -145,10 +160,10 @@ class BaselineProtonet(tf.keras.Model):
         """
         # extend support stacked by ALL croppings
         support_augmented = self.get_all_crops(support_stacked)
+        sup_mask_augmented = self.get_all_crops(support_mask)
 
         # augmented is c x n_croppings*n_support x ...
         # TODO if batch shape can be more than 1 axis, we can save lots of reshaping here
-        # TODO the 3* is magic number -- currently multiplication factor due to 3 crops
         new_shape = tf.concat(
             [[n_classes * (self.crop_size + 1)*self.n_support],
              self.input_shape[1:]],
@@ -163,18 +178,31 @@ class BaselineProtonet(tf.keras.Model):
             axis=0)
         support_set = tf.reshape(support_embeddings, stacked_shape)
 
+        # add axis in mask for feature dimension in support set
+        # we assume there is only one!!
+        masked_support = sup_mask_augmented[..., None] * support_set
+        # n_classes x d, average over support set as well as time axis
+        prototypes = tf.reduce_mean(masked_support, axis=[1, 2])
+
         # random crop on query set here instead of in architecture
-        # TODO maybe not necessary anymore?
-        query_stacked.set_shape(self.input_shape)
         query_stacked = self.crop_layer(
             query_stacked[..., None], training=training)[..., 0]
-        query_set = self(query_stacked, training=training)  # c * query x d
+        query_set = self(query_stacked, training=training)  # c * query x t x d
 
-        # n_classes x d
-        prototypes = tf.reduce_mean(support_set, axis=1)
+        # TODO don't hardcode, maybe adapt to random cropping
+        # this is n_classes * n_query x 32
+        query_mask = query_mask[:, 1:-1]
 
+        # masks are all 1-0, so here we assign a different label to each class
+        # TODO for this to quite make sense, NEGATIVE class has to be label 0?
         labels = tf.repeat(tf.range(n_classes, dtype=tf.int32),
                            repeats=[self.n_query])
+        labels = query_mask * labels[:, None]
+
+        # idea: if we reshape both query and labels such that time axis becomes
+        # part of "batch axis", we can use the following code as-is??
+        query_set = tf.reshape(query_set, [-1] + self.output_shape[1:])
+        labels = tf.reshape(labels, [-1])
 
         logits, labels = self.logit_fn(query_set, prototypes, labels,
                                        n_classes=n_classes)
@@ -199,12 +227,12 @@ class BaselineProtonet(tf.keras.Model):
         """
         # process input as one batch of size
         #  b = n_classes * (n_support + n_query)
-        support, query, n_classes = self.process_batch_input(data,
-                                                             k_way=self.k_way)
+        support, query, mask_support, mask_query, n_classes = self.process_batch_input(data,
+                                                                                       k_way=self.k_way)
 
         with tf.GradientTape() as tape:
             loss, logits, labels = self.proto_compute_loss(
-                support, query, n_classes, training=True)
+                support, query, mask_support, mask_query, n_classes, training=True)
 
         trainable_vars = self.trainable_variables
         gradients = tape.gradient(loss, trainable_vars)
@@ -224,10 +252,10 @@ class BaselineProtonet(tf.keras.Model):
             Dictionary of current metrics.
 
         """
-        support, query, n_classes = self.process_batch_input(data)
+        support, query, mask_support, mask_query, n_classes = self.process_batch_input(data)
 
         loss, logits, labels = self.proto_compute_loss(
-            support, query, n_classes, training=False)
+            support, query, mask_support, mask_query, n_classes, training=False)
 
         self.compiled_metrics.update_state(labels, logits)
         return {m.name: m.result() for m in self.metrics}
@@ -406,8 +434,8 @@ class BaselineProtonet(tf.keras.Model):
 
     def get_all_crops(self, inputs):
         # TODO generalize...
-        left = inputs[:, :, :32]
-        mid = inputs[:, :, 1:33]
+        left = inputs[:, :, :-2]
+        mid = inputs[:, :, 1:-1]
         right = inputs[:, :, 2:]
 
         return tf.concat([left, mid, right], axis=1)

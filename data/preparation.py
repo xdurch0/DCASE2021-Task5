@@ -24,6 +24,8 @@ def fill_simple(target_path: str,
                 start_frames: Optional[Iterable] = None,
                 end_frames: Optional[Iterable] = None,
                 start_index: int = 0) -> int:
+    # if start frames are not given, we create start and end frames that simply
+    # cover the entire audio!!!!!!!!!
     if start_frames is None:
         start_frames = np.arange(start_index, len(features) - seg_len, hop_len)
         end_frames = start_frames + seg_len
@@ -64,23 +66,19 @@ def resample_all(conf: DictConfig):
 
 
 def get_start_and_end_frames(df: pd.DataFrame,
-                             fps: float,
-                             add_margin: bool) -> Tuple[list, list]:
+                             fps: float) -> Tuple[list, list]:
     """Convert time in seconds to frames, with a margin.
 
     Parameters:
         df: Dataframe with start and end times in seconds.
         fps: Frames per second.
-        add_margin: If True, add a short margin around event start and end
-                    times.
 
     Returns:
         Lists of start times and end times in frames.
 
     """
-    margin = 1 / fps if add_margin else 0.
-    df.loc[:, 'Starttime'] = df['Starttime'] - margin
-    df.loc[:, 'Endtime'] = df['Endtime'] + margin
+    df.loc[:, 'Starttime'] = df['Starttime']
+    df.loc[:, 'Endtime'] = df['Endtime']
 
     start_time = [time_to_frame(start, fps) for start in df['Starttime']]
 
@@ -198,8 +196,7 @@ def feature_transform(conf, mode):
             df_eval = pd.read_csv(eval_csv, header=0, index_col=False)
             q_list = df_eval['Q'].to_numpy()
 
-            start_times, end_times = get_start_and_end_frames(df_eval, fps,
-                                                              True)
+            start_times, end_times = get_start_and_end_frames(df_eval, fps)
             support_indices = np.where(q_list == 'POS')[0][:conf.train.n_shot]
 
             start_times_support = np.array(start_times)[support_indices]
@@ -274,7 +271,7 @@ def build_tfrecords(parent_path: str,
             positive_events = df_events[df_events[cls] == "POS"]
             print("  {} positive events...".format(len(positive_events)))
             start_frames_pos, end_frames_pos = get_start_and_end_frames(
-                positive_events, fps, True)
+                positive_events, fps)
 
             if cls in EVENT_ESTIMATES:
                 starts_and_ends = [correct_events(sta, end, cls) for sta, end in zip(start_frames_pos, end_frames_pos)]
@@ -296,7 +293,7 @@ def build_tfrecords(parent_path: str,
             unk_events = df_events[df_events[cls] == "UNK"]
             print("  {} unknown events...".format(len(unk_events)))
             start_frames_unk, end_frames_unk = get_start_and_end_frames(
-                unk_events, fps, True)
+                unk_events, fps)
             count_unk = write_events_from_features(
                 tf_writer,
                 start_frames_unk,
@@ -340,46 +337,101 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
                                seg_len: int,
                                hop_len: int) -> int:
     count = 0
+    margin_frames = 5  # TODO ugh
     for start_ind, end_ind in zip(start_frames, end_frames):
-        if end_ind - start_ind > seg_len:
+        start_margin = start_ind - margin_frames
+        end_margin = end_ind + margin_frames
+
+        actual_length = end_ind - start_ind
+        margin_length = end_margin - start_margin
+
+        if margin_length > seg_len:
+            # TODO write tests for margin stuff??
             # event is longer than segment length -- got to split
             shift = 0
-            while end_ind - (start_ind + shift) > seg_len:
-                feature_patch = features[(start_ind + shift):
-                                         (start_ind + shift + seg_len)]
+            while end_margin - (start_margin + shift) > seg_len:
+                feature_patch = features[(start_margin + shift):
+                                         (start_margin + shift + seg_len)]
 
-                tf_writer.write(example_from_patch(feature_patch))
+                if shift == 0:
+                    # if this is the first segment, everything up to the end is
+                    # labeled 1, excluding initial margin
+                    # exception: if the event is quite short but barely padded
+                    # above segment length by the margin, there may already
+                    # be margin at the end, which should be masked as 0.
+                    mask = np.zeros_like(feature_patch)
+                    up_to = np.minimum(len(mask), margin_frames + actual_length)
+                    mask[margin_frames:up_to] = 1.
+                else:
+                    # else we are past the start, and everything is 1
+                    # TODO also not correct! margin could appear at the end.
+
+                    # margin will appear iff shift + seg_len
+                    # appraoches the end by less or equal margin_frames.
+                    # so sh + sl >= end_margin - margin_frames ??
+
+                    # e.g. event len 36. -> 46 with margin
+                    # first segment 0:34
+                    # second segment 8:42
+                    # last 12:46
+
+                    # 41 is margin frame!! (42, 43, 44, 45)
+                    # 8 + 34 = 42
+                    # margin_length - margin_frames = 46 - 5 = 41
+                    # -> 1 margin, correct
+
+                    mask = np.zeros_like(feature_patch)
+                    from_ = shift if shift < margin_frames else 0
+
+                    seg_end = shift + len(mask)
+                    margin_begins_at = margin_length - margin_frames
+                    up_to = np.minimum(len(mask),
+                                       len(mask) - (seg_end - margin_begins_at))
+                    mask[from_:up_to] = 1.
+
+                tf_writer.write(example_from_patch(feature_patch, mask))
                 count += 1
                 shift = shift + hop_len
 
-            feature_patch_last = features[(end_ind - seg_len):end_ind]
-            tf_writer.write(example_from_patch(feature_patch_last))
-            count += 1
+            feature_patch_last = features[(end_margin - seg_len):end_margin]
 
-        elif end_ind - start_ind < seg_len:
-            # If event is shorter than segment length then just take it ffs
-            feature_patch = features[start_ind:(start_ind + seg_len)]
-            if feature_patch.shape[0] == 0:
-                print("WARNING: 0-length patch found!")
-                continue
+            # in case of short events, there may be margin in the beginning
+            mask = np.zeros_like(feature_patch_last)
+            from_ = np.maximum(0, len(mask) - (actual_length + margin_frames))
+            mask[from_:-margin_frames] = 1.
 
-            assert len(feature_patch) == seg_len  # sanity check
-
-            tf_writer.write(example_from_patch(feature_patch))
+            tf_writer.write(example_from_patch(feature_patch_last, mask))
             count += 1
 
         else:
-            # it just fits! technically subsumed by case #2...
-            feature_patch = features[start_ind:end_ind]
-            tf_writer.write(example_from_patch(feature_patch))
+            # If event is shorter than segment length then just take it ffs
+            # also covers the case where it fits exactly
+            feature_patch = features[start_margin:(start_margin + seg_len)]
+
+            if feature_patch.shape[0] == 0:
+                print("WARNING: 0-length patch found!")
+                continue
+            assert len(feature_patch) == seg_len  # sanity check
+
+            # mask the actual event, without margins
+            mask = np.zeros_like(feature_patch)
+            mask[margin_frames:(actual_length + margin_frames)] = 1.
+
+            tf_writer.write(example_from_patch(feature_patch, mask))
             count += 1
 
     return count
 
 
-def example_from_patch(patch: np.ndarray):
+def example_from_patch(patch: np.ndarray,
+                       mask: np.ndarray):
     byte_patch = tf.io.serialize_tensor(patch).numpy()
+    byte_mask = tf.io.serialize_tensor(mask).numpy()
+
     feature = {"patch": tf.train.Feature(
-        bytes_list=tf.train.BytesList(value=[byte_patch]))}
+        bytes_list=tf.train.BytesList(value=[byte_patch])),
+               "mask": tf.train.Feature(
+        bytes_list=tf.train.BytesList(value=[byte_mask])
+               )}
     example = tf.train.Example(features=tf.train.Features(feature=feature))
     return example.SerializeToString()

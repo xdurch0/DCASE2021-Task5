@@ -196,23 +196,32 @@ def body_block(preprocessed, conf):
     b1 = baseline_block(preprocessed, 128, 3,
                         dims=dims,
                         activation="swish",
+                        pool_size=(1, 2),
                         use_se=conf.model.squeeze_excite,
                         scope="block1")
     b2 = baseline_block(b1, 128, 3,
                         dims=dims,
                         activation="swish",
+                        pool_size=(2, 2),
                         use_se=conf.model.squeeze_excite,
                         scope="block2")
     b3 = baseline_block(b2, 128, 3,
                         dims=dims,
                         activation="swish",
+                        pool_size=(1, 2),
                         use_se=conf.model.squeeze_excite,
                         scope="block3")
     b4 = baseline_block(b3, 128, 3,
                         dims=dims,
                         activation="swish",
+                        pool_size=(1, 2),
                         use_se=conf.model.squeeze_excite,
                         scope="block4")
+
+    b4 = tfkl.UpSampling2D(size=(2, 1), name="upsample_time")(b4)
+    b4 = tfkl.Conv2D(128, 3, padding="same")(b4)
+    b4 = tfkl.BatchNormalization()(b4)
+    b4 = tfkl.Activation(tf.nn.swish)(b4)
 
     # TODO this does not work for 1d inputs lol
     if conf.model.pool == "all":
@@ -228,7 +237,7 @@ def body_block(preprocessed, conf):
 
 
 def distance_block(embedding_input, conf):
-    distance_inp_shape = embedding_input.shape[1:]
+    distance_inp_shape = embedding_input.shape[2:]
     distance_inp1 = tf.keras.Input(shape=distance_inp_shape,
                                    name="distance_input1")
     distance_inp2 = tf.keras.Input(shape=distance_inp_shape,

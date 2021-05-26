@@ -80,7 +80,7 @@ def get_probabilities(conf: DictConfig,
                 positive_prototype, negative_prototype, query_flat_time)
             event_probabilities.extend(probability_pos)
         # TODO hardcoded...
-        event_probabilities = [0]*8 + event_probabilities
+        event_probabilities = [0.]*(8 + 1) + event_probabilities
 
         probs_per_iter.append(event_probabilities)
 

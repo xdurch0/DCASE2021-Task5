@@ -65,15 +65,7 @@ def get_probs_and_frames(conf: DictConfig,
         "probs_" + feat_name + "_" + str(model_index) + ".npy")
     probs = np.load(prob_path)
 
-    segment_centers = np.arange(len(probs)) * hop_seg_frames
-
-    prob_interpolator = interpolate.interp1d(segment_centers, probs,
-                                             kind="previous",
-                                             fill_value=0.,
-                                             bounds_error=False)
-
-    return (prob_interpolator(np.arange(len(feats_no_overlap))),
-            feats_no_overlap, query_offset)
+    return probs, feats_no_overlap, query_offset
 
 
 def get_event_frames(conf: DictConfig,

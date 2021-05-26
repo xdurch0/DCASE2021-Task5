@@ -47,7 +47,7 @@ def get_probs_and_frames(conf: DictConfig,
 
     """
     feature_data = tf.data.TFRecordDataset(
-        tfr_path + "/query.tfrecords").map(parse_example)
+        tfr_path + "/query.tfrecords").map(parse_example).map(lambda x, y: x)
     query_feats = np.asarray([thing.numpy() for thing in feature_data])
     query_offset = np.load(tfr_path + "/start_index_query.npy")
 
@@ -247,14 +247,15 @@ def the_works(probs, features, query_offset,
         def softplus(x):
             return np.log(1 + np.exp(x))
 
+        # TODO adapt to possible multiple time constants
         gain = softplus(
-            model_weights["pcen_compress"]["pcen_compress_gain:0"][()])
+            model_weights["pcen_compress0"]["pcen_compress0_gain:0"][()])
         bias = softplus(
-            model_weights["pcen_compress"]["pcen_compress_bias:0"][()])
+            model_weights["pcen_compress0"]["pcen_compress0_bias:0"][()])
         power = softplus(
-            model_weights["pcen_compress"]["pcen_compress_power:0"][()])
+            model_weights["pcen_compress0"]["pcen_compress0_power:0"][()])
         eps = softplus(
-            model_weights["pcen_compress"]["pcen_compress_eps:0"][()])
+            model_weights["pcen_compress0"]["pcen_compress0_eps:0"][()])
 
         plot_features = pcen_compress(features[:, :conf.features.n_mels],
                                       features[:, conf.features.n_mels:],

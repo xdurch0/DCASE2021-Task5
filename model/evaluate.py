@@ -12,31 +12,6 @@ from utils.conversions import time_to_frame
 from .dataset import parse_example
 
 
-def evaluate_prototypes(conf: DictConfig,
-                        base_path: str,
-                        model: tf.keras.Model,
-                        thresholds: Sequence) -> Tuple[dict, np.ndarray]:
-    """Run the evaluation for a single dataset.
-
-    Parameters:
-        conf: hydra config object.
-        base_path: Path to the preprocessed evaluation files, without
-                   extensions.
-        model: The model to evaluate.
-        thresholds: 1D container with all "positive" thresholds to try.
-
-    Returns:
-        dict mapping thresholds to onsets and offsets of events.
-
-    """
-    probabilities = get_probabilities(conf, base_path, model)
-
-    print("Ok, trying {} thresholds...".format(len(thresholds)))
-    start_index_query = np.load(base_path + "_start_index_query.npy")
-    return (get_events(probabilities, thresholds, start_index_query, conf),
-            probabilities)
-
-
 def get_probabilities(conf: DictConfig,
                       base_path: str,
                       model: tf.keras.Model) -> np.ndarray:
@@ -53,7 +28,8 @@ def get_probabilities(conf: DictConfig,
 
     """
     # def crop_fn(x): return model.crop_layer(x, training=False)
-    def crop_fn(x): return x[:, 1:-1]
+    # TODO magic number
+    def crop_fn(x): return x[0][:, 1:-1], x[1][:, 1:-1]
 
     query_path = os.path.join(base_path, "query.tfrecords")
     dataset_query = tf.data.TFRecordDataset([query_path])
@@ -64,11 +40,16 @@ def get_probabilities(conf: DictConfig,
     dataset_pos = tf.data.TFRecordDataset([positive_path])
     dataset_pos = dataset_pos.map(parse_example)
 
-    pos_entries = np.array([entry for entry in iter(dataset_pos)])
+    pos_entries = np.array([entry[0] for entry in iter(dataset_pos)])
     pos_entries = model.get_all_crops(pos_entries[None])[0]
 
+    pos_masks = np.array([entry[1] for entry in iter(dataset_pos)])
+    pos_masks = model.get_all_crops(pos_masks[None])[0]
+
     positive_embeddings = model(pos_entries, training=False)
-    positive_prototype = tf.reduce_mean(positive_embeddings, axis=0)
+    # TODO this hardcodes embeddings with 2 extra dimensions (freqs, channels)
+    masked_embeddings = positive_embeddings * pos_masks[..., None, None]
+    positive_prototype = tf.reduce_mean(masked_embeddings, axis=[0, 1])
 
     probs_per_iter = []
 
@@ -85,13 +66,20 @@ def get_probabilities(conf: DictConfig,
             parse_example).batch(conf.eval.batch_size).map(crop_fn)
 
         negative_embeddings = model.predict(dataset_neg)
-        negative_prototype = negative_embeddings.mean(axis=0)
+        negative_prototype = negative_embeddings.mean(axis=0).mean(axis=0)
 
+        # TODO hardcoded magic numbers
         for batch in dataset_query:
             query_embeddings = model(batch, training=False)
+
+            query_centers = query_embeddings[:, 8:-7]
+            query_flat_time = tf.reshape(query_centers, (-1,) + query_embeddings.shape[2:])
+
             probability_pos = model.get_probability(
-                positive_prototype, negative_prototype, query_embeddings)
+                positive_prototype, negative_prototype, query_flat_time)
             event_probabilities.extend(probability_pos)
+        # TODO hardcoded...
+        event_probabilities = [0]*8 + event_probabilities
 
         probs_per_iter.append(event_probabilities)
 
@@ -129,11 +117,10 @@ def get_events(probabilities: np.ndarray,
                                                     conf.eval.thresholding)
         onset_segments, offset_segments = get_on_and_offsets(thresholded_probs)
 
-        # TODO why +1???
-        onset_times = onset_segments * hop_seg_frames / fps
+        onset_times = onset_segments / fps
         onset_times = onset_times + start_time_query
 
-        offset_times = offset_segments * hop_seg_frames / fps
+        offset_times = offset_segments / fps
         offset_times = offset_times + start_time_query
 
         on_off_sets[threshold] = (onset_times, offset_times)
@@ -186,3 +173,11 @@ def get_on_and_offsets(thresholded_probs) -> Tuple[np.ndarray, np.ndarray]:
     assert len(offset_frames) == len(onset_frames)
 
     return onset_frames, offset_frames
+
+# rough idea:
+# in get_probs, go through query set and compute event probs at each frame
+# always only take the middle 17 frames? leaving how many on each side??
+# main thing is to stitch together centers of consecutive segments
+# in such a way that edge artifacts are avoided, but also no time frame is skipped or doubled
+# in get_events then, we should only have to change things such that the times
+# are not computed in terms of segments, but in terms of frames instead (use fps directly)

@@ -84,6 +84,57 @@ def baseline_block(inp: tf.Tensor,
         return activated
 
 
+def unet_dec_block(inp: tf.Tensor,
+                   inp2: Optional[tf.Tensor] = None,
+                   filters: int = 128,
+                   filter_size: int = 3,
+                   dims: int = 2,
+                   activation: Optional[str] = None,
+                   pool_size: Union[int, tuple] = 2,
+                   use_se: bool = False,
+                   scope: str = ""):
+    if dims == 2:
+        conv_fn = tfkl.Conv2D
+        pool_fn = tfkl.UpSampling2D
+    else:
+        conv_fn = tfkl.Conv1D
+        pool_fn = tfkl.UpSampling1D
+
+    if inp2 is not None:
+        inp = tfkl.Concatenate()([inp, inp2])
+
+    if ((isinstance(pool_size, int) and pool_size > 1)
+            or isinstance(pool_size, tuple)):
+        inp = pool_fn(pool_size,
+                      padding="same",
+                      name=scope + "_pool")(inp)
+
+    conv = conv_fn(filters,
+                   filter_size,
+                   padding="same",
+                   name=scope + "_conv")(inp)
+    bn = tfkl.BatchNormalization(name=scope + "_bn")(conv)
+
+    if activation == "swish":
+        activated = tfkl.Activation(tf.nn.swish,
+                                    name=scope + "_activation")(bn)
+    elif activation is None:
+        activated = bn
+    else:
+        raise ValueError("Invalid activation {}".format(activation))
+
+    if use_se:
+        activated = squeeze_excite(activated, scope=scope + "_se")
+
+    if ((isinstance(pool_size, int) and pool_size > 1)
+            or isinstance(pool_size, tuple)):
+        return pool_fn(pool_size,
+                       padding="same",
+                       name=scope + "_pool")(activated)
+    else:
+        return activated
+
+
 def create_baseline_model(conf: DictConfig,
                           print_summary: bool = False) -> tf.keras.Model:
     """Create a simple model structure for the Prototypical Network.
@@ -101,7 +152,7 @@ def create_baseline_model(conf: DictConfig,
         raise ValueError("Model only understands dims of 1 or 2.")
 
     inp, preprocessed = preprocessing_block(conf)
-    b4 = body_block(preprocessed, conf)
+    b4 = unet_body(preprocessed, conf)
     distance_model = distance_block(b4, conf)
 
     model = BaselineProtonet(inp, b4,
@@ -188,6 +239,67 @@ def preprocessing_block(conf):
     preprocessed = tfkl.BatchNormalization(name="input_norm")(preprocessed)
 
     return inp, preprocessed
+
+
+def unet_body(preprocessed, conf):
+    dims = conf.model.dims
+
+    enc1 = baseline_block(preprocessed, 128, 3,
+                        dims=dims,
+                        activation="swish",
+                        use_se=conf.model.squeeze_excite,
+                          scope="e1")  # 16 x 64
+    enc2 = baseline_block(enc1, 128, 3,
+                        dims=dims,
+                        activation="swish",
+                        use_se=conf.model.squeeze_excite,
+                          scope="e2")  # 8 x 32
+    enc3 = baseline_block(enc2, 128, 3,
+                        dims=dims,
+                        activation="swish",
+                        use_se=conf.model.squeeze_excite,
+                          scope="e3")  # 4 x 16
+    enc4 = baseline_block(enc3, 128, 3,
+                        dims=dims,
+                        activation="swish",
+                        use_se=conf.model.squeeze_excite,
+                          scope="e4") # 2 x 8
+    enc5 = baseline_block(enc4, 128, 3,
+                        dims=dims,
+                        activation="swish",
+                        use_se=conf.model.squeeze_excite,
+                          scope="e5") # 1 x 4
+
+    dec1 = unet_dec_block(enc5, filters=128, filter_size=3,
+                          dims=dims,
+                          activation="swish",
+                          use_se=conf.model.squeeze_excite,
+                          scope="d1") # 2 x 8
+    dec2 = unet_dec_block(dec1, enc4, filters=128, filter_size=3,
+                          dims=dims,
+                          activation="swish",
+                          use_se=conf.model.squeeze_excite,
+                          scope="d2")  # 4 x 16
+    dec3 = unet_dec_block(dec2, enc3, filters=128, filter_size=3,
+                          dims=dims,
+                          activation="swish",
+                          use_se=conf.model.squeeze_excite,
+                          scope="d3")  # 8 x 32
+    dec4 = unet_dec_block(dec3, enc2, filters=128, filter_size=3,
+                          dims=dims,
+                          activation="swish",
+                          use_se=conf.model.squeeze_excite,
+                          scope="d4")  # 16 x 64
+    dec5 = unet_dec_block(dec4, enc1, filters=128, filter_size=3,
+                          dims=dims,
+                          activation="swish",
+                          use_se=conf.model.squeeze_excite,
+                          scope="d5")  # 32 x 128
+
+    # TODO bad?
+    final = tf.reduce_mean(dec5, axis=2, keepdims=True)
+
+    return final
 
 
 def body_block(preprocessed, conf):

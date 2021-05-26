@@ -16,6 +16,8 @@ from .transforms import (resample_audio, RawExtractor, FeatureExtractor,
 
 pd.options.mode.chained_assignment = None
 
+MARGIN_FRAMES = 5  # TODO ugh
+
 
 def fill_simple(target_path: str,
                 features: np.ndarray,
@@ -23,7 +25,8 @@ def fill_simple(target_path: str,
                 hop_len: int,
                 start_frames: Optional[Iterable] = None,
                 end_frames: Optional[Iterable] = None,
-                start_index: int = 0) -> int:
+                start_index: int = 0,
+                margin_mode: bool = False) -> int:
     # if start frames are not given, we create start and end frames that simply
     # cover the entire audio!!!!!!!!!
     if start_frames is None:
@@ -36,7 +39,8 @@ def fill_simple(target_path: str,
                                            end_frames,
                                            features,
                                            seg_len,
-                                           hop_len)
+                                           hop_len,
+                                           margin_mode)
     return count
 
 
@@ -205,7 +209,8 @@ def feature_transform(conf, mode):
                                             seg_len_frames,
                                             hop_seg_frames,
                                             start_times_support,
-                                            end_times_support)
+                                            end_times_support,
+                                            margin_mode=True)
 
             print("Creating query dataset")
             start_index_query = end_times[support_indices[-1]]
@@ -280,7 +285,8 @@ def build_tfrecords(parent_path: str,
                 end_frames_pos,
                 features,
                 seg_len,
-                hop_len)
+                hop_len,
+                True)
 
             print("  ...{} frames.".format(count_pos))
             total_count += count_pos
@@ -297,7 +303,8 @@ def build_tfrecords(parent_path: str,
                 end_frames_unk,
                 features,
                 seg_len,
-                hop_len)
+                hop_len,
+                True)
 
             print("  ...{} frames.\n".format(count_unk))
             total_count += count_unk
@@ -332,12 +339,20 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
                                end_frames: Iterable,
                                features: np.ndarray,
                                seg_len: int,
-                               hop_len: int) -> int:
+                               hop_len: int,
+                               margin_mode: bool = False) -> int:
+    # TODO NOTE
+    # the masks for query/negative sets in evaluation are most likely garbage
+    # this is due to the margin_frames stuff being kinda MESSED UP
+    if margin_mode:
+        use_margin = MARGIN_FRAMES
+    else:
+        use_margin = 0
+
     count = 0
-    margin_frames = 5  # TODO ugh
     for start_ind, end_ind in zip(start_frames, end_frames):
-        start_margin = start_ind - margin_frames
-        end_margin = end_ind + margin_frames
+        start_margin = start_ind - use_margin
+        end_margin = end_ind + use_margin
 
         actual_length = end_ind - start_ind
         margin_length = end_margin - start_margin
@@ -359,15 +374,15 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
                     # above segment length by the margin, there may already
                     # be margin at the end, which should be masked as 0.
                     mask = np.zeros(feature_patch.shape[0], dtype=np.float32)
-                    up_to = np.minimum(len(mask), margin_frames + actual_length)
-                    mask[margin_frames:up_to] = 1.
+                    up_to = np.minimum(len(mask), use_margin + actual_length)
+                    mask[use_margin:up_to] = 1.
                 else:
                     # else we are past the start, and everything is 1
                     # TODO also not correct! margin could appear at the end.
 
                     # margin will appear iff shift + seg_len
-                    # appraoches the end by less or equal margin_frames.
-                    # so sh + sl >= end_margin - margin_frames ??
+                    # appraoches the end by less or equal MARGIN_FRAMES.
+                    # so sh + sl >= end_margin - MARGIN_FRAMES ??
 
                     # e.g. event len 36. -> 46 with margin
                     # first segment 0:34
@@ -376,14 +391,14 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
 
                     # 41 is margin frame!! (42, 43, 44, 45)
                     # 8 + 34 = 42
-                    # margin_length - margin_frames = 46 - 5 = 41
+                    # margin_length - MARGIN_FRAMES = 46 - 5 = 41
                     # -> 1 margin, correct
 
                     mask = np.zeros(feature_patch.shape[0], dtype=np.float32)
-                    from_ = shift if shift < margin_frames else 0
+                    from_ = shift if shift < use_margin else 0
 
                     seg_end = shift + len(mask)
-                    margin_begins_at = margin_length - margin_frames
+                    margin_begins_at = margin_length - use_margin
                     up_to = np.minimum(len(mask),
                                        len(mask) - (seg_end - margin_begins_at))
                     mask[from_:up_to] = 1.
@@ -397,8 +412,8 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
 
             # in case of short events, there may be margin in the beginning
             mask = np.zeros(feature_patch_last.shape[0], dtype=np.float32)
-            from_ = np.maximum(0, len(mask) - (actual_length + margin_frames))
-            mask[from_:-margin_frames] = 1.
+            from_ = np.maximum(0, len(mask) - (actual_length + use_margin))
+            mask[from_:-use_margin] = 1.
 
             tf_writer.write(example_from_patch(feature_patch_last, mask))
             count += 1
@@ -415,7 +430,7 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
 
             # mask the actual event, without margins
             mask = np.zeros(feature_patch.shape[0], dtype=np.float32)
-            mask[margin_frames:(actual_length + margin_frames)] = 1.
+            mask[use_margin:(actual_length + use_margin)] = 1.
 
             tf_writer.write(example_from_patch(feature_patch, mask))
             count += 1

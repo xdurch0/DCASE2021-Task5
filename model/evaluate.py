@@ -29,12 +29,13 @@ def get_probabilities(conf: DictConfig,
     """
     # def crop_fn(x): return model.crop_layer(x, training=False)
     # TODO magic number
-    def crop_fn(x, y): return x[:, 1:-1], y[:, 1:-1]
+    def crop_fn(x): return x[:, 1:-1]
+    def ignore_mask(x, y): return x
 
     query_path = os.path.join(base_path, "query.tfrecords")
     dataset_query = tf.data.TFRecordDataset([query_path])
     dataset_query = dataset_query.map(
-        parse_example).batch(conf.eval.batch_size).map(crop_fn)
+        parse_example).batch(conf.eval.batch_size).map(ignore_mask).map(crop_fn)
 
     positive_path = os.path.join(base_path, "positive.tfrecords")
     dataset_pos = tf.data.TFRecordDataset([positive_path])
@@ -63,7 +64,7 @@ def get_probabilities(conf: DictConfig,
         dataset_neg = tf.data.TFRecordDataset([negative_path])
         dataset_neg = dataset_neg.shuffle(1000000).take(conf.eval.samples_neg)
         dataset_neg = dataset_neg.map(
-            parse_example).batch(conf.eval.batch_size).map(crop_fn)
+            parse_example).batch(conf.eval.batch_size).map(ignore_mask).map(crop_fn)
 
         negative_embeddings = model.predict(dataset_neg)
         negative_prototype = negative_embeddings.mean(axis=0).mean(axis=0)

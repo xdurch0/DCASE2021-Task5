@@ -29,7 +29,7 @@ def get_probabilities(conf: DictConfig,
     """
     # def crop_fn(x): return model.crop_layer(x, training=False)
     # TODO magic number
-    def crop_fn(x): return x[0][:, 1:-1], x[1][:, 1:-1]
+    def crop_fn(x, y): return x[:, 1:-1], y[:, 1:-1]
 
     query_path = os.path.join(base_path, "query.tfrecords")
     dataset_query = tf.data.TFRecordDataset([query_path])
@@ -73,7 +73,7 @@ def get_probabilities(conf: DictConfig,
             query_embeddings = model(batch, training=False)
 
             query_centers = query_embeddings[:, 8:-7]
-            query_flat_time = tf.reshape(query_centers, (-1,) + query_embeddings.shape[2:])
+            query_flat_time = tf.reshape(query_centers, (query_centers.shape[0] * query_centers.shape[1],) + query_embeddings.shape[2:])
 
             probability_pos = model.get_probability(
                 positive_prototype, negative_prototype, query_flat_time)

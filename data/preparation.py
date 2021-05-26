@@ -29,9 +29,6 @@ def fill_simple(target_path: str,
     if start_frames is None:
         start_frames = np.arange(start_index, len(features) - seg_len, hop_len)
         end_frames = start_frames + seg_len
-        start_frames = np.concatenate(
-            (start_frames, [len(features) - seg_len]), axis=0)
-        end_frames = np.concatenate((end_frames, [len(features)]), axis=0)
 
     with tf.io.TFRecordWriter(target_path) as writer:
         count = write_events_from_features(writer,
@@ -353,6 +350,8 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
                 feature_patch = features[(start_margin + shift):
                                          (start_margin + shift + seg_len)]
 
+                assert len(feature_patch) == seg_len  # sanity check
+
                 if shift == 0:
                     # if this is the first segment, everything up to the end is
                     # labeled 1, excluding initial margin
@@ -394,6 +393,7 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
                 shift = shift + hop_len
 
             feature_patch_last = features[(end_margin - seg_len):end_margin]
+            assert len(feature_patch_last) == seg_len  # sanity check
 
             # in case of short events, there may be margin in the beginning
             mask = np.zeros(feature_patch_last.shape[0], dtype=np.float32)

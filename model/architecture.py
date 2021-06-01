@@ -106,7 +106,6 @@ def unet_dec_block(inp: tf.Tensor,
     if ((isinstance(pool_size, int) and pool_size > 1)
             or isinstance(pool_size, tuple)):
         inp = pool_fn(pool_size,
-                      padding="same",
                       name=scope + "_pool")(inp)
 
     conv = conv_fn(filters,
@@ -126,13 +125,7 @@ def unet_dec_block(inp: tf.Tensor,
     if use_se:
         activated = squeeze_excite(activated, scope=scope + "_se")
 
-    if ((isinstance(pool_size, int) and pool_size > 1)
-            or isinstance(pool_size, tuple)):
-        return pool_fn(pool_size,
-                       padding="same",
-                       name=scope + "_pool")(activated)
-    else:
-        return activated
+    return activated
 
 
 def create_baseline_model(conf: DictConfig,
@@ -254,38 +247,8 @@ def unet_body(preprocessed, conf):
                         activation="swish",
                         use_se=conf.model.squeeze_excite,
                           scope="e2")  # 8 x 32
-    enc3 = baseline_block(enc2, 128, 3,
-                        dims=dims,
-                        activation="swish",
-                        use_se=conf.model.squeeze_excite,
-                          scope="e3")  # 4 x 16
-    enc4 = baseline_block(enc3, 128, 3,
-                        dims=dims,
-                        activation="swish",
-                        use_se=conf.model.squeeze_excite,
-                          scope="e4") # 2 x 8
-    enc5 = baseline_block(enc4, 128, 3,
-                        dims=dims,
-                        activation="swish",
-                        use_se=conf.model.squeeze_excite,
-                          scope="e5") # 1 x 4
 
-    dec1 = unet_dec_block(enc5, filters=128, filter_size=3,
-                          dims=dims,
-                          activation="swish",
-                          use_se=conf.model.squeeze_excite,
-                          scope="d1") # 2 x 8
-    dec2 = unet_dec_block(dec1, enc4, filters=128, filter_size=3,
-                          dims=dims,
-                          activation="swish",
-                          use_se=conf.model.squeeze_excite,
-                          scope="d2")  # 4 x 16
-    dec3 = unet_dec_block(dec2, enc3, filters=128, filter_size=3,
-                          dims=dims,
-                          activation="swish",
-                          use_se=conf.model.squeeze_excite,
-                          scope="d3")  # 8 x 32
-    dec4 = unet_dec_block(dec3, enc2, filters=128, filter_size=3,
+    dec4 = unet_dec_block(enc2, filters=128, filter_size=3,
                           dims=dims,
                           activation="swish",
                           use_se=conf.model.squeeze_excite,
@@ -297,7 +260,7 @@ def unet_body(preprocessed, conf):
                           scope="d5")  # 32 x 128
 
     # TODO bad?
-    final = tf.reduce_mean(dec5, axis=2, keepdims=True)
+    final = dec5
 
     return final
 

@@ -11,13 +11,13 @@ path:
   root_dir:  /project/jens/DCASE2021-Task5/Development_Set
   train_dir: ${path.root_dir}/Training_Set
   eval_dir:  ${path.root_dir}/Validation_Set
-  feat_path: ${path.root_dir}/FeaturesSeg_${features.type}
+  feat_path: ${path.root_dir}/FeaturesSegDamn_${features.type}
   feat_train: ${path.feat_path}/feat_train
   feat_eval:  ${path.feat_path}/feat_eval
-  model: ${path.root_dir}/ModelSeg
+  model: ${path.root_dir}/ModelDamn
   best_model: ${path.model}/best_model
   last_model: ${path.model}/last_model
-  results: ${path.root_dir}/ResultsSeg
+  results: ${path.root_dir}/ResultsDamn
 
 features:
   type: pcen_lowpass
@@ -42,7 +42,7 @@ train:
   n_shot: 5
   n_query: 5
   k_way : 10
-  lr: 0.0001
+  lr: 0.001
   scheduler_gamma: 0.5
   patience: 3
   epochs: 100

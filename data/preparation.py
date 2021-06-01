@@ -275,9 +275,9 @@ def build_tfrecords(parent_path: str,
             start_frames_pos, end_frames_pos = get_start_and_end_frames(
                 positive_events, fps)
 
-            if cls in EVENT_ESTIMATES:
-                starts_and_ends = [correct_events(sta, end, cls) for sta, end in zip(start_frames_pos, end_frames_pos)]
-                start_frames_pos, end_frames_pos = zip(*starts_and_ends)
+            #if cls in EVENT_ESTIMATES:
+            #    starts_and_ends = [correct_events(sta, end, cls) for sta, end in zip(start_frames_pos, end_frames_pos)]
+            #    start_frames_pos, end_frames_pos = zip(*starts_and_ends)
 
             count_pos = write_events_from_features(
                 tf_writer,
@@ -375,7 +375,8 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
                     # be margin at the end, which should be masked as 0.
                     mask = np.zeros(feature_patch.shape[0], dtype=np.float32)
                     up_to = np.minimum(len(mask), use_margin + actual_length)
-                    mask[use_margin:up_to] = 1.
+                    if margin_mode:
+                        mask[use_margin:up_to] = 1.
                 else:
                     # else we are past the start, and everything is 1
                     # TODO also not correct! margin could appear at the end.
@@ -401,7 +402,8 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
                     margin_begins_at = margin_length - use_margin
                     up_to = np.minimum(len(mask),
                                        len(mask) - (seg_end - margin_begins_at))
-                    mask[from_:up_to] = 1.
+                    if margin_mode:
+                        mask[from_:up_to] = 1.
 
                 tf_writer.write(example_from_patch(feature_patch, mask))
                 count += 1
@@ -413,7 +415,8 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
             # in case of short events, there may be margin in the beginning
             mask = np.zeros(feature_patch_last.shape[0], dtype=np.float32)
             from_ = np.maximum(0, len(mask) - (actual_length + use_margin))
-            mask[from_:-use_margin] = 1.
+            if margin_mode:
+                mask[from_:-use_margin] = 1.
 
             tf_writer.write(example_from_patch(feature_patch_last, mask))
             count += 1
@@ -430,7 +433,8 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
 
             # mask the actual event, without margins
             mask = np.zeros(feature_patch.shape[0], dtype=np.float32)
-            mask[use_margin:(actual_length + use_margin)] = 1.
+            if margin_mode:
+                mask[use_margin:(actual_length + use_margin)] = 1.
 
             tf_writer.write(example_from_patch(feature_patch, mask))
             count += 1

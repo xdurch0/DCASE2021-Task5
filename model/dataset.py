@@ -104,7 +104,7 @@ def per_class_dataset(class_to_records: Dict[str, list],
     labels = labels[:neg_index] + ["neg"] + labels[(neg_index)+1:]
 
     datasets = []
-    for label, records in labels:
+    for label in labels:
         records = class_to_records[label]
 
         class_data = tf.data.TFRecordDataset(

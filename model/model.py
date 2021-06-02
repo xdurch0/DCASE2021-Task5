@@ -190,9 +190,9 @@ class BaselineProtonet(tf.keras.Model):
         negative_support_mask = tf.cast(tf.math.logical_not(tf.cast(support_mask_augmented, tf.bool)), tf.float32)
         negative_masked_support = negative_support_mask * support_set
         negative_count = tf.reduce_sum(negative_support_mask, axis=[0, 1, 2])
-        negative_prototype = tf.reduce_sum(negative_masked_support, axis=[0,1,2]) + prototypes[0] / (negative_count + one_count[0])
+        negative_prototype = tf.reduce_sum(negative_masked_support, axis=[0,1,2]) / negative_count
 
-        prototypes = tf.concat([negative_prototype[None], prototypes], axis=0)
+        prototypes = tf.concat([negative_prototype[None], prototypes[1:]], axis=0)
 
         # random crop on query set here instead of in architecture
         query_stacked = self.crop_layer(
@@ -205,7 +205,7 @@ class BaselineProtonet(tf.keras.Model):
 
         # masks are all 1-0, so here we assign a different label to each class
         # TODO for this to quite make sense, NEGATIVE class has to be label 0?
-        labels = tf.repeat(tf.range(1, n_classes+1, dtype=tf.int32),
+        labels = tf.repeat(tf.range(0, n_classes, dtype=tf.int32),
                            repeats=[self.n_query])
         labels = query_mask * labels[:, None]
 

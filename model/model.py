@@ -160,7 +160,9 @@ class BaselineProtonet(tf.keras.Model):
         """
         # extend support stacked by ALL croppings
         support_augmented = self.get_all_crops(support_stacked)
-        sup_mask_augmented = self.get_all_crops(support_mask)
+        # add axis in mask for feature dimension in support set
+        # we assume there are exactly two!! (frequencies, channels)
+        support_mask_augmented = self.get_all_crops(support_mask)[..., None, None]
 
         # augmented is c x n_croppings*n_support x ...
         # TODO if batch shape can be more than 1 axis, we can save lots of reshaping here
@@ -178,14 +180,16 @@ class BaselineProtonet(tf.keras.Model):
             axis=0)
         support_set = tf.reshape(support_embeddings, stacked_shape)
 
-        # add axis in mask for feature dimension in support set
-        # we assume there are exactly two!!
-        masked_support = sup_mask_augmented[..., None, None] * support_set
-        negative_masked_support = tf.cast(tf.math.logical_not(tf.cast(sup_mask_augmented, tf.bool)), tf.float32)[..., None, None] * support_set
-        negative_prototype = tf.reduce_mean(negative_masked_support, axis=[0,1,2])
-
+        masked_support = support_mask_augmented * support_set
         # n_classes x d, average over support set as well as time axis
-        prototypes = tf.reduce_mean(masked_support, axis=[1, 2])
+        one_count = tf.reduce_sum(support_mask_augmented, axis=[1, 2])
+        prototypes = tf.reduce_sum(masked_support, axis=[1, 2]) / one_count
+
+        negative_support_mask = tf.cast(tf.math.logical_not(tf.cast(support_mask_augmented, tf.bool)), tf.float32)
+        negative_masked_support = negative_support_mask * support_set
+        negative_count = tf.reduce_sum(negative_support_mask, axis=[0, 1, 2])
+        negative_prototype = tf.reduce_sum(negative_masked_support, axis=[0,1,2]) / negative_count
+
         prototypes = tf.concat([negative_prototype[None], prototypes], axis=0)
 
         # random crop on query set here instead of in architecture

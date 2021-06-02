@@ -46,11 +46,12 @@ def get_probabilities(conf: DictConfig,
 
     pos_masks = np.array([entry[1] for entry in iter(dataset_pos)])
     pos_masks = model.get_all_crops(pos_masks[None])[0]
+    # TODO this hardcodes embeddings with 2 extra dimensions (freqs, channels)
+    pos_masks = pos_masks[..., None, None]
 
     positive_embeddings = model(pos_entries, training=False)
-    # TODO this hardcodes embeddings with 2 extra dimensions (freqs, channels)
-    masked_embeddings = positive_embeddings * pos_masks[..., None, None]
-    positive_prototype = tf.reduce_mean(masked_embeddings, axis=[0, 1])
+    masked_embeddings = positive_embeddings * pos_masks
+    positive_prototype = tf.reduce_sum(masked_embeddings, axis=[0, 1]) / tf.reduce_sum(pos_masks, axis=[0, 1])
 
     probs_per_iter = []
 
@@ -67,6 +68,7 @@ def get_probabilities(conf: DictConfig,
             parse_example).batch(conf.eval.batch_size).map(ignore_mask).map(crop_fn)
 
         negative_embeddings = model.predict(dataset_neg)
+        # mean is OK here because we assume everything is negative
         negative_prototype = negative_embeddings.mean(axis=0).mean(axis=0)
 
         # TODO hardcoded magic numbers

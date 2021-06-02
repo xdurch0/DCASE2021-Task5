@@ -103,7 +103,9 @@ class BaselineProtonet(tf.keras.Model):
             if k_way:
                 inputs_stacked = tf.stack(inp, axis=0)
                 class_picks = tf.random.shuffle(
-                    tf.range(n_classes, dtype=tf.int32))[:k_way]
+                    tf.range(1, n_classes, dtype=tf.int32))[:(k_way-1)]
+                class_picks = tf.concat([[0], class_picks], axis=0)
+
                 inputs_stacked = tf.gather(inputs_stacked, class_picks)
 
                 # TODO don't hardcode
@@ -188,7 +190,7 @@ class BaselineProtonet(tf.keras.Model):
         negative_support_mask = tf.cast(tf.math.logical_not(tf.cast(support_mask_augmented, tf.bool)), tf.float32)
         negative_masked_support = negative_support_mask * support_set
         negative_count = tf.reduce_sum(negative_support_mask, axis=[0, 1, 2])
-        negative_prototype = tf.reduce_sum(negative_masked_support, axis=[0,1,2]) / negative_count
+        negative_prototype = tf.reduce_sum(negative_masked_support, axis=[0,1,2]) + prototypes[0] / (negative_count + one_count[0])
 
         prototypes = tf.concat([negative_prototype[None], prototypes], axis=0)
 

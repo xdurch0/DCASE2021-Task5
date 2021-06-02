@@ -69,11 +69,7 @@ def tf_dataset(conf: DictConfig) -> Union[tf.data.Dataset,
             if conf.features.neg_by_recording and label == "neg":
                 label = record_path.split("/")[-2] + "_neg"
 
-            # TODO temporary skip negative
-            if label.endswith("neg"):
-                    pass
-            else:
-                map_to_fill[label].append(record_path)
+            map_to_fill[label].append(record_path)
 
     print("\nUsing {} classes for training.".format(
         len(class_to_record_map_train)))
@@ -99,8 +95,18 @@ def per_class_dataset(class_to_records: Dict[str, list],
         Zipped, batched, prefetched per-class dataset.
 
     """
+    # we make sure neg is in front
+    if "neg" not in class_to_records.keys():
+        raise ValueError("Negative label is required atm.")
+
+    labels = list(class_to_records.keys())
+    neg_index = labels.index("neg")
+    labels = labels[:neg_index] + ["neg"] + labels[(neg_index)+1:]
+
     datasets = []
-    for label, records in class_to_records.items():
+    for label, records in labels:
+        records = class_to_records[label]
+
         class_data = tf.data.TFRecordDataset(
             records, num_parallel_reads=AUTOTUNE)
         class_data = class_data.shuffle(10000).repeat()

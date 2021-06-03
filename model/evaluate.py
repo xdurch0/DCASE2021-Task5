@@ -50,8 +50,11 @@ def get_probabilities(conf: DictConfig,
     pos_masks = pos_masks[..., None, None]
 
     positive_embeddings = model(pos_entries, training=False)
+
+    positive_embeddings = positive_embeddings[:, 8:-7]
+    pos_masks = pos_masks[:, 8:-7]
     masked_embeddings = positive_embeddings * pos_masks
-    positive_prototype = tf.reduce_sum(masked_embeddings, axis=[0, 1]) / tf.reduce_sum(pos_masks, axis=[0, 1])
+    positive_prototype = tf.reduce_sum(masked_embeddings, axis=[0, 1]) / (tf.reduce_sum(pos_masks, axis=[0, 1]) + 1e-8)
 
     probs_per_iter = []
 

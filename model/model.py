@@ -182,14 +182,18 @@ class BaselineProtonet(tf.keras.Model):
             axis=0)
         support_set = tf.reshape(support_embeddings, stacked_shape)
 
+        # remove edges? TODO hardcoded
+        support_mask_augmented = support_mask_augmented[:, :, 8:-7]
+        support_set = support_set[:, :, 8:-7]
+
         masked_support = support_mask_augmented * support_set
         # n_classes x d, average over support set as well as time axis
-        one_count = tf.reduce_sum(support_mask_augmented, axis=[1, 2]) + 1e-6
+        one_count = tf.reduce_sum(support_mask_augmented, axis=[1, 2]) + 1e-8
         prototypes = tf.reduce_sum(masked_support, axis=[1, 2]) / one_count
 
         negative_support_mask = tf.cast(tf.math.logical_not(tf.cast(support_mask_augmented, tf.bool)), tf.float32)
         negative_masked_support = negative_support_mask * support_set
-        negative_count = tf.reduce_sum(negative_support_mask, axis=[0, 1, 2]) + 1e-6
+        negative_count = tf.reduce_sum(negative_support_mask, axis=[0, 1, 2]) + 1e-8
         negative_prototype = tf.reduce_sum(negative_masked_support, axis=[0,1,2]) / negative_count
 
         prototypes = tf.concat([negative_prototype[None], prototypes[1:]], axis=0)
@@ -211,6 +215,7 @@ class BaselineProtonet(tf.keras.Model):
 
         # idea: if we reshape both query and labels such that time axis becomes
         # part of "batch axis", we can use the following code as-is??
+        # remove edges; TODO hardcoded!
         query_set = query_set[:, 8:-7]
         labels = labels[:, 8:-7]
         query_set = tf.reshape(query_set, (-1,) + self.output_shape[2:])

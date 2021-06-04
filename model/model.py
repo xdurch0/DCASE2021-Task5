@@ -112,7 +112,7 @@ class BaselineProtonet(tf.keras.Model):
                 if mask_mode:
                     stacked_query_shape = [k_way * self.n_query, 34]
                 else:
-                    stacked_query_shape = [k_way * self.n_query, 34, 256]
+                    stacked_query_shape = [k_way * self.n_query, 34, 260]
 
                 support = inputs_stacked[:, :self.n_support]
                 query = inputs_stacked[:, self.n_support:]

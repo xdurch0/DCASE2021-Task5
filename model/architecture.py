@@ -229,6 +229,10 @@ def preprocessing_block(conf):
         preprocessed = tfkl.Reshape((-1, conf.features.n_mels, 1),
                                     name="add_channel_axis")(preprocessed)
 
+    # TODO hardcoding...
+    preprocessed = tfkl.experimental.preprocessing.RandomZoom(0.2)(preprocessed)
+    preprocessed = tfkl.experimental.preprocessing.RandomCrop(32, 128)(preprocessed)
+
     preprocessed = tfkl.BatchNormalization(name="input_norm")(preprocessed)
 
     return inp, preprocessed

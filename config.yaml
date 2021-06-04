@@ -11,13 +11,13 @@ path:
   root_dir:  /project/jens/DCASE2021-Task5/Development_Set
   train_dir: ${path.root_dir}/Training_Set
   eval_dir:  ${path.root_dir}/Validation_Set
-  feat_path: ${path.root_dir}/FeaturesSegDamn_${features.type}
+  feat_path: ${path.root_dir}/FeaturesSeg130_${features.type}
   feat_train: ${path.feat_path}/feat_train
   feat_eval:  ${path.feat_path}/feat_eval
-  model: ${path.root_dir}/ModelDamn
+  model: ${path.root_dir}/Model130
   best_model: ${path.model}/best_model
   last_model: ${path.model}/last_model
-  results: ${path.root_dir}/ResultsDamn
+  results: ${path.root_dir}/Results130
 
 features:
   type: pcen_lowpass
@@ -26,7 +26,7 @@ features:
   fmax: 11025
   sr: 22050
   n_fft: 1024
-  n_mels: 128
+  n_mels: 130
   hop_mel: 128
   time_constant: 0.2
   gain: 0.98

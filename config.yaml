@@ -14,10 +14,10 @@ path:
   feat_path: ${path.root_dir}/FeaturesSeg130_${features.type}
   feat_train: ${path.feat_path}/feat_train
   feat_eval:  ${path.feat_path}/feat_eval
-  model: ${path.root_dir}/Model130
+  model: ${path.root_dir}/ModelDrop
   best_model: ${path.model}/best_model
   last_model: ${path.model}/last_model
-  results: ${path.root_dir}/Results130
+  results: ${path.root_dir}/ResultsDrop
 
 features:
   type: pcen_lowpass

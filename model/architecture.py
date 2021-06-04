@@ -34,6 +34,7 @@ def baseline_block(inp: tf.Tensor,
                    activation: Optional[str] = None,
                    pool_size: Union[int, tuple] = 2,
                    use_se: bool = False,
+                   use_dropout: bool = False,
                    scope: str = "") -> tf.Tensor:
     """Calculate a simple convolution block.
 
@@ -75,6 +76,9 @@ def baseline_block(inp: tf.Tensor,
     if use_se:
         activated = squeeze_excite(activated, scope=scope + "_se")
 
+    if use_dropout:
+        activated = tfkl.SpatialDropout2D(0.05)(activated)
+
     if ((isinstance(pool_size, int) and pool_size > 1)
             or isinstance(pool_size, tuple)):
         return pool_fn(pool_size,
@@ -92,6 +96,7 @@ def unet_dec_block(inp: tf.Tensor,
                    activation: Optional[str] = None,
                    pool_size: Union[int, tuple] = 2,
                    use_se: bool = False,
+                   use_dropout: bool = False,
                    scope: str = ""):
     if dims == 2:
         conv_fn = tfkl.Conv2D
@@ -124,6 +129,9 @@ def unet_dec_block(inp: tf.Tensor,
 
     if use_se:
         activated = squeeze_excite(activated, scope=scope + "_se")
+
+    if use_dropout:
+        activated = tfkl.SpatialDropout2D(0.05)(activated)
 
     return activated
 
@@ -230,8 +238,8 @@ def preprocessing_block(conf):
                                     name="add_channel_axis")(preprocessed)
 
     # TODO hardcoding...
-    preprocessed = tfkl.experimental.preprocessing.RandomZoom(0.2)(preprocessed)
-    preprocessed = tfkl.experimental.preprocessing.RandomCrop(32, 128)(preprocessed)
+    preprocessed = tfkl.experimental.preprocessing.RandomZoom(0.2, name="random_stretch")(preprocessed)
+    preprocessed = tfkl.experimental.preprocessing.RandomCrop(32, 128, name="pitch_shift")(preprocessed)
 
     preprocessed = tfkl.BatchNormalization(name="input_norm")(preprocessed)
 
@@ -245,22 +253,26 @@ def unet_body(preprocessed, conf):
                         dims=dims,
                         activation="swish",
                         use_se=conf.model.squeeze_excite,
+                          use_dropout=True,
                           scope="e1")  # 16 x 64
     enc2 = baseline_block(enc1, 128, 3,
                         dims=dims,
                         activation="swish",
                         use_se=conf.model.squeeze_excite,
+                          use_dropout=True,
                           scope="e2")  # 8 x 32
 
     dec4 = unet_dec_block(enc2, filters=128, filter_size=3,
                           dims=dims,
                           activation="swish",
                           use_se=conf.model.squeeze_excite,
+                          use_dropout=True,
                           scope="d4")  # 16 x 64
     dec5 = unet_dec_block(dec4, enc1, filters=128, filter_size=3,
                           dims=dims,
                           activation="swish",
                           use_se=conf.model.squeeze_excite,
+                          use_dropout=False,
                           scope="d5")  # 32 x 128
 
     # TODO bad?

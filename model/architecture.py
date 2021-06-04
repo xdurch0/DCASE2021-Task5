@@ -59,9 +59,11 @@ def baseline_block(inp: tf.Tensor,
         conv_fn = tfkl.Conv1D
         pool_fn = tfkl.MaxPool1D
 
+    reg = tf.keras.regularizers.l2(0.000001)
     conv = conv_fn(filters,
                    filter_size,
                    padding="same",
+                   kernel_regularizer=reg,
                    name=scope + "_conv")(inp)
     bn = tfkl.BatchNormalization(name=scope + "_bn")(conv)
 
@@ -113,9 +115,11 @@ def unet_dec_block(inp: tf.Tensor,
         inp = pool_fn(pool_size,
                       name=scope + "_pool")(inp)
 
+    reg = tf.keras.regularizers.l2(0.000001)
     conv = conv_fn(filters,
                    filter_size,
                    padding="same",
+                   kernel_regularizer=reg,
                    name=scope + "_conv")(inp)
     bn = tfkl.BatchNormalization(name=scope + "_bn")(conv)
 

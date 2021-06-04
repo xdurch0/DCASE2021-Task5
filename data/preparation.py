@@ -16,7 +16,7 @@ from .transforms import (resample_audio, RawExtractor, FeatureExtractor,
 
 pd.options.mode.chained_assignment = None
 
-MARGIN_FRAMES = 9  # TODO ugh
+MARGIN_FRAMES = 5  # TODO ugh
 
 
 def fill_simple(target_path: str,

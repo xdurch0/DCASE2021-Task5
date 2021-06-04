@@ -183,8 +183,8 @@ class BaselineProtonet(tf.keras.Model):
         support_set = tf.reshape(support_embeddings, stacked_shape)
 
         # remove edges? TODO hardcoded
-        support_mask_augmented = support_mask_augmented[:, :, 8:-7]
-        support_set = support_set[:, :, 8:-7]
+        #support_mask_augmented = support_mask_augmented[:, :, 8:-7]
+        #support_set = support_set[:, :, 8:-7]
 
         masked_support = support_mask_augmented * support_set
         # n_classes x d, average over support set as well as time axis

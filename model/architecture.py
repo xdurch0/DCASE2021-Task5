@@ -64,6 +64,7 @@ def baseline_block(inp: tf.Tensor,
                    filter_size,
                    padding="same",
                    kernel_regularizer=reg,
+                   use_bias=False,
                    name=scope + "_conv")(inp)
     bn = tfkl.BatchNormalization(name=scope + "_bn")(conv)
 
@@ -120,6 +121,7 @@ def unet_dec_block(inp: tf.Tensor,
                    filter_size,
                    padding="same",
                    kernel_regularizer=reg,
+                   use_bias=False,
                    name=scope + "_conv")(inp)
     bn = tfkl.BatchNormalization(name=scope + "_bn")(conv)
 
@@ -254,15 +256,15 @@ def unet_body(preprocessed, conf):
     dims = conf.model.dims
 
     enc1 = baseline_block(preprocessed, 128, 3,
-                        dims=dims,
-                        activation="swish",
-                        use_se=conf.model.squeeze_excite,
+                          dims=dims,
+                          activation="swish",
+                          use_se=conf.model.squeeze_excite,
                           use_dropout=True,
                           scope="e1")  # 16 x 64
     enc2 = baseline_block(enc1, 128, 3,
-                        dims=dims,
-                        activation="swish",
-                        use_se=conf.model.squeeze_excite,
+                          dims=dims,
+                          activation="swish",
+                          use_se=conf.model.squeeze_excite,
                           use_dropout=True,
                           scope="e2")  # 8 x 32
 
@@ -352,7 +354,7 @@ def distance_block(embedding_input, conf):
     elif conf.model.distance_fn == "euclid_weighted":
         flat1 = tfkl.Flatten(name="flatten1")(distance_inp1)
         flat2 = tfkl.Flatten(name="flatten2")(distance_inp2)
-        squared_diff = tfkl.Lambda(lambda x, y: (x - y)**2,
+        squared_diff = tfkl.Lambda(lambda x: (x[0] - x[1])**2,
                                    name="squared_difference")([flat1, flat2])
         weighted = tfkl.Dense(
             1, kernel_initializer=tf.keras.initializers.ones(),

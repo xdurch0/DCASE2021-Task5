@@ -357,68 +357,30 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
         actual_length = end_ind - start_ind
         margin_length = end_margin - start_margin
 
+        event_features = features[start_margin:end_margin]
+        event_mask = np.zeros(event_features.shape[0], dtype=np.float32)
+        if margin_mode:
+            event_mask[use_margin:-use_margin] = 1.
+
         if margin_length > seg_len:
-            # TODO write tests for margin stuff??
             # event is longer than segment length -- got to split
             shift = 0
             while end_margin - (start_margin + shift) > seg_len:
-                feature_patch = features[(start_margin + shift):
-                                         (start_margin + shift + seg_len)]
+                feature_patch = event_features[shift:(shift + seg_len)]
+                mask_patch = event_mask[shift:(shift + seg_len)]
 
                 assert len(feature_patch) == seg_len  # sanity check
 
-                if shift == 0:
-                    # if this is the first segment, everything up to the end is
-                    # labeled 1, excluding initial margin
-                    # exception: if the event is quite short but barely padded
-                    # above segment length by the margin, there may already
-                    # be margin at the end, which should be masked as 0.
-                    mask = np.zeros(feature_patch.shape[0], dtype=np.float32)
-                    up_to = np.minimum(len(mask), use_margin + actual_length)
-                    if margin_mode:
-                        mask[use_margin:up_to] = 1.
-                else:
-                    # else we are past the start, and everything is 1
-                    # TODO also not correct! margin could appear at the end.
-
-                    # margin will appear iff shift + seg_len
-                    # appraoches the end by less or equal MARGIN_FRAMES.
-                    # so sh + sl >= end_margin - MARGIN_FRAMES ??
-
-                    # e.g. event len 36. -> 46 with margin
-                    # first segment 0:34
-                    # second segment 8:42
-                    # last 12:46
-
-                    # 41 is margin frame!! (42, 43, 44, 45)
-                    # 8 + 34 = 42
-                    # margin_length - MARGIN_FRAMES = 46 - 5 = 41
-                    # -> 1 margin, correct
-
-                    mask = np.zeros(feature_patch.shape[0], dtype=np.float32)
-                    from_ = shift if shift < use_margin else 0
-
-                    seg_end = shift + len(mask)
-                    margin_begins_at = margin_length - use_margin
-                    up_to = np.minimum(len(mask),
-                                       len(mask) - (seg_end - margin_begins_at))
-                    if margin_mode:
-                        mask[from_:up_to] = 1.
-
-                tf_writer.write(example_from_patch(feature_patch, mask))
+                tf_writer.write(example_from_patch(feature_patch, mask_patch))
                 count += 1
                 shift = shift + hop_len
 
-            feature_patch_last = features[(end_margin - seg_len):end_margin]
+            feature_patch_last = event_features[-seg_len:]
+            mask_patch_last = event_mask[-seg_len:]
+
             assert len(feature_patch_last) == seg_len  # sanity check
 
-            # in case of short events, there may be margin in the beginning
-            mask = np.zeros(feature_patch_last.shape[0], dtype=np.float32)
-            from_ = np.maximum(0, len(mask) - (actual_length + use_margin))
-            if margin_mode:
-                mask[from_:-use_margin] = 1.
-
-            tf_writer.write(example_from_patch(feature_patch_last, mask))
+            tf_writer.write(example_from_patch(feature_patch_last, mask_patch_last))
             count += 1
 
         else:
@@ -426,9 +388,14 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
             # also covers the case where it fits exactly
             feature_patch = features[start_margin:(start_margin + seg_len)]
 
-            if feature_patch.shape[0] == 0:
-                print("WARNING: 0-length patch found!")
-                continue
+            if len(feature_patch) < seg_len:
+                print("WARNING: Segment is shorter than segment length. This "
+                      "is likely due to an event being close to the end of the "
+                      "recording. Padding with 0s!")
+                padding = seg_len - len(feature_patch)
+                # note this assumes features are 2d
+                feature_patch = np.pad(feature_patch, ((0, padding), (0, 0)))
+
             assert len(feature_patch) == seg_len  # sanity check
 
             # mask the actual event, without margins

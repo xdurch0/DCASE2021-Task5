@@ -9,6 +9,9 @@ from .model import (euclidean_distance, squared_euclidean_distance,
 
 tfkl = tf.keras.layers
 
+DROPOUT = 0.05
+L2 = 0.000001
+
 
 def squeeze_excite(inp: tf.Tensor,
                    reduction_factor: int = 8,
@@ -59,7 +62,7 @@ def baseline_block(inp: tf.Tensor,
         conv_fn = tfkl.Conv1D
         pool_fn = tfkl.MaxPool1D
 
-    reg = tf.keras.regularizers.l2(0.000001)
+    reg = tf.keras.regularizers.l2(L2)
     conv = conv_fn(filters,
                    filter_size,
                    padding="same",
@@ -80,7 +83,7 @@ def baseline_block(inp: tf.Tensor,
         activated = squeeze_excite(activated, scope=scope + "_se")
 
     if use_dropout:
-        activated = tfkl.SpatialDropout2D(0.05)(activated)
+        activated = tfkl.SpatialDropout2D(DROPOUT)(activated)
 
     if ((isinstance(pool_size, int) and pool_size > 1)
             or isinstance(pool_size, tuple)):
@@ -98,25 +101,28 @@ def unet_dec_block(inp: tf.Tensor,
                    dims: int = 2,
                    activation: Optional[str] = None,
                    pool_size: Union[int, tuple] = 2,
+                   unpool_size: Union[int, tuple] = 2,
                    use_se: bool = False,
                    use_dropout: bool = False,
                    scope: str = ""):
     if dims == 2:
         conv_fn = tfkl.Conv2D
-        pool_fn = tfkl.UpSampling2D
+        unpool_fn = tfkl.UpSampling2D
+        pool_fn = tfkl.MaxPool2D
     else:
         conv_fn = tfkl.Conv1D
-        pool_fn = tfkl.UpSampling1D
+        unpool_fn = tfkl.UpSampling1D
+        pool_fn = tfkl.MaxPool1D
 
     if inp2 is not None:
         inp = tfkl.Concatenate()([inp, inp2])
 
-    if ((isinstance(pool_size, int) and pool_size > 1)
-            or isinstance(pool_size, tuple)):
-        inp = pool_fn(pool_size,
-                      name=scope + "_pool")(inp)
+    if ((isinstance(unpool_size, int) and unpool_size > 1)
+            or isinstance(unpool_size, tuple)):
+        inp = unpool_fn(unpool_size,
+                        name=scope + "_pool")(inp)
 
-    reg = tf.keras.regularizers.l2(0.000001)
+    reg = tf.keras.regularizers.l2(L2)
     conv = conv_fn(filters,
                    filter_size,
                    padding="same",
@@ -137,9 +143,15 @@ def unet_dec_block(inp: tf.Tensor,
         activated = squeeze_excite(activated, scope=scope + "_se")
 
     if use_dropout:
-        activated = tfkl.SpatialDropout2D(0.05)(activated)
+        activated = tfkl.SpatialDropout2D(DROPOUT)(activated)
 
-    return activated
+    if ((isinstance(pool_size, int) and pool_size > 1)
+            or isinstance(pool_size, tuple)):
+        return pool_fn(pool_size,
+                       padding="same",
+                       name=scope + "_pool")(activated)
+    else:
+        return activated
 
 
 def create_baseline_model(conf: DictConfig,
@@ -159,7 +171,7 @@ def create_baseline_model(conf: DictConfig,
         raise ValueError("Model only understands dims of 1 or 2.")
 
     inp, preprocessed = preprocessing_block(conf)
-    b4 = unet_body(preprocessed, conf)
+    b4 = body_block(preprocessed, conf)
     distance_model = distance_block(b4, conf)
 
     model = BaselineProtonet(inp, b4,
@@ -252,85 +264,73 @@ def preprocessing_block(conf):
     return inp, preprocessed
 
 
-def unet_body(preprocessed, conf):
-    dims = conf.model.dims
-
-    enc1 = baseline_block(preprocessed, 128, 3,
-                          dims=dims,
-                          activation="swish",
-                          use_se=conf.model.squeeze_excite,
-                          use_dropout=True,
-                          scope="e1")  # 16 x 64
-    enc2 = baseline_block(enc1, 128, 3,
-                          dims=dims,
-                          activation="swish",
-                          use_se=conf.model.squeeze_excite,
-                          use_dropout=True,
-                          scope="e2")  # 8 x 32
-
-    dec4 = unet_dec_block(enc2, filters=128, filter_size=3,
-                          dims=dims,
-                          activation="swish",
-                          use_se=conf.model.squeeze_excite,
-                          use_dropout=True,
-                          scope="d4")  # 16 x 64
-    dec5 = unet_dec_block(dec4, enc1, filters=128, filter_size=3,
-                          dims=dims,
-                          activation="swish",
-                          use_se=conf.model.squeeze_excite,
-                          use_dropout=False,
-                          scope="d5")  # 32 x 128
-
-    # TODO bad?
-    final = dec5
-
-    return final
-
-
 def body_block(preprocessed, conf):
     dims = conf.model.dims
 
-    b1 = baseline_block(preprocessed, 128, 3,
+    b1 = baseline_block(preprocessed, 32, 3,
                         dims=dims,
                         activation="swish",
-                        pool_size=(1, 2),
+                        pool_size=2,
                         use_se=conf.model.squeeze_excite,
-                        scope="block1")
-    b2 = baseline_block(b1, 128, 3,
+                        scope="block1")  # 16 x 64
+    b2 = baseline_block(b1, 32, 3,
                         dims=dims,
                         activation="swish",
-                        pool_size=(2, 2),
+                        pool_size=1,
                         use_se=conf.model.squeeze_excite,
-                        scope="block2")
-    b3 = baseline_block(b2, 128, 3,
+                        scope="block2")  # 16 x 64
+    b3 = baseline_block(b2, 64, 3,
                         dims=dims,
                         activation="swish",
-                        pool_size=(1, 2),
+                        pool_size=2,
                         use_se=conf.model.squeeze_excite,
-                        scope="block3")
-    b4 = baseline_block(b3, 128, 3,
+                        scope="block3")  # 8 x 32
+    b4 = baseline_block(b3, 64, 3,
                         dims=dims,
                         activation="swish",
-                        pool_size=(1, 2),
+                        pool_size=1,
                         use_se=conf.model.squeeze_excite,
-                        scope="block4")
+                        scope="block4")  # 8 x 32
 
-    b4 = tfkl.UpSampling2D(size=(2, 1), name="upsample_time")(b4)
-    b4 = tfkl.Conv2D(128, 3, padding="same")(b4)
-    b4 = tfkl.BatchNormalization()(b4)
-    b4 = tfkl.Activation(tf.nn.swish)(b4)
+    dec1 = unet_dec_block(b4, filters=128, filter_size=3,
+                          dims=dims,
+                          activation="swish",
+                          unpool_size=(2, 1),
+                          pool_size=1,
+                          use_se=conf.model.squeeze_excite,
+                          use_dropout=True,
+                          scope="d1")  # 16 x 32
+    dec2 = unet_dec_block(dec1, filters=128, filter_size=3,
+                          dims=dims,
+                          activation="swish",
+                          unpool_size=1,
+                          pool_size=(1, 2),
+                          use_se=conf.model.squeeze_excite,
+                          use_dropout=True,
+                          scope="d2")  # 16 x 16
+    dec3 = unet_dec_block(dec2, filters=128, filter_size=3,
+                          dims=dims,
+                          activation="swish",
+                          unpool_size=(2, 1),
+                          pool_size=1,
+                          use_se=conf.model.squeeze_excite,
+                          use_dropout=True,
+                          scope="d3")  # 32 x 16
+    dec4 = unet_dec_block(dec3, filters=128, filter_size=3,
+                          dims=dims,
+                          activation="swish",
+                          unpool_size=1,
+                          pool_size=(1, 2),
+                          use_se=conf.model.squeeze_excite,
+                          use_dropout=True,
+                          scope="d4")  # 32 x 8
 
     # TODO this does not work for 1d inputs lol
-    if conf.model.pool == "all":
-        b4 = tfkl.GlobalMaxPool2D(name="global_pool_all")(b4)
-    elif conf.model.pool == "time":
-        b4 = tfkl.Lambda(lambda x: tf.reduce_max(x, axis=1),
-                         name="global_pool_time")(b4)
-    elif conf.model.pool == "freqs":
-        b4 = tfkl.Lambda(lambda x: tf.reduce_max(x, axis=2),
-                         name="global_pool_freqs")(b4)
+    if conf.model.pool == "freqs":
+        dec4 = tfkl.Lambda(lambda x: tf.reduce_max(x, axis=2),
+                         name="global_pool_freqs")(dec4)
 
-    return b4
+    return dec4
 
 
 def distance_block(embedding_input, conf):

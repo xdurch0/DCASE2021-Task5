@@ -75,7 +75,7 @@ def main(conf: DictConfig):
 
                 print("Processing audio file : {}".format(audio_name))
 
-                probs = get_probabilities(conf,
+                probs, thresh_est = get_probabilities(conf,
                                           os.path.join(conf.path.feat_eval,
                                                        feat_dir),
                                           model)
@@ -84,6 +84,9 @@ def main(conf: DictConfig):
                     conf.path.results,
                     "probs_" + audio_name[:-4] + "_" + str(index))
                 np.save(probs_path, probs)
+
+                thresh_est_path = os.path.join(conf.path.results, "thingy_" + audio_name[:-4] + "_" + str(index))
+                np.save(thresh_est_path, thresh_est)
 
                 all_prob_storage[feat_dir].append(probs)
 
@@ -96,6 +99,12 @@ def main(conf: DictConfig):
                 conf.path.results,
                 "probs_" + audio_name[:-4] + "_" + str(conf.set.n_runs))
             np.save(probs_path, probs)
+
+            # TODO!!
+            thresh_est_path = os.path.join(conf.path.results,
+                                           "thingy_" + audio_name[
+                                                       :-4] + "_" + str(conf.set.n_runs))
+            np.save(thresh_est_path, 1.)
 
     if conf.set.eval:
         if not os.path.isdir(conf.path.results):
@@ -127,13 +136,20 @@ def main(conf: DictConfig):
                     "probs_" + audio_name[:-4] + "_" + str(index) + ".npy")
                 probs = np.load(probs_path)
 
+                thresh_est_path = os.path.join(conf.path.results,
+                                               "thingy_" + audio_name[
+                                                           :-4] + "_" + str(
+                                                   index))
+                thresh_est = np.load(thresh_est_path)
+
                 start_index_query = np.load(
                     os.path.join(conf.path.feat_eval, feat_dir,
                                  "start_index_query.npy"))
                 on_off_sets = get_events(probs,
                                          thresholds,
                                          start_index_query,
-                                         conf)
+                                         conf,
+                                         thresh_est)
 
                 for thresh, (onset, offset) in on_off_sets.items():
                     name = np.repeat(audio_name, len(onset))

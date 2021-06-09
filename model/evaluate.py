@@ -57,6 +57,7 @@ def get_probabilities(conf: DictConfig,
     positive_prototype = tf.reduce_sum(masked_embeddings, axis=[0, 1]) / (tf.reduce_sum(pos_masks, axis=[0, 1]) + 1e-8)
 
     probs_per_iter = []
+    pos_prob_estimate_per_iter = []
 
     iterations = conf.eval.iterations
 
@@ -89,13 +90,32 @@ def get_probabilities(conf: DictConfig,
 
         probs_per_iter.append(event_probabilities)
 
-    return np.mean(np.array(probs_per_iter), axis=0)
+        # leave-one-out classification of support set to get good threshold??
+        total_prob = 0
+        total_count = 0
+        for ind in range(masked_embeddings.shape[0]):
+            loo_pos_embeddings = tf.concat([masked_embeddings[:ind], masked_embeddings[ind+1:]], axis=0)
+            loo_pos_mask = tf.concat([pos_masks[:ind], pos_masks[ind+1:]], axis=0)
+            loo_pos_prototype = tf.reduce_sum(loo_pos_embeddings, axis=[0, 1]) / (tf.reduce_sum(loo_pos_mask, axis=[0, 1]) + 1e-8)
+            to_classify = masked_embeddings[ind]
+
+            loo_probs = model.get_probability(loo_pos_prototype, negative_prototype, to_classify)
+            loo_probs = loo_probs * pos_masks[ind, :, 0, 0]
+            total_prob += sum(loo_probs)
+            total_count += sum(pos_masks[ind])
+
+        pos_prob_estimate = total_prob / total_count
+        print("  Prob estimate: {}".format(pos_prob_estimate))
+        pos_prob_estimate_per_iter.append(pos_prob_estimate)
+
+    return np.mean(np.array(probs_per_iter), axis=0), np.mean(pos_prob_estimate_per_iter)
 
 
 def get_events(probabilities: np.ndarray,
                thresholds: Sequence,
                start_index_query: int,
-               conf: DictConfig) -> dict:
+               conf: DictConfig,
+               magic_thing) -> dict:
     """Threshold event probabilities and get event onsets/offsets.
 
     Parameters:
@@ -119,6 +139,8 @@ def get_events(probabilities: np.ndarray,
 
     on_off_sets = dict()
     for threshold in thresholds:
+        threshold = magic_thing * 2*threshold
+
         thresholded_probs = threshold_probabilities(probabilities, threshold,
                                                     conf.eval.thresholding)
         onset_segments, offset_segments = get_on_and_offsets(thresholded_probs)

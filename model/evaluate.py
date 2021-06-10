@@ -76,7 +76,7 @@ def get_probabilities(conf: DictConfig,
             parse_example).batch(conf.eval.batch_size).map(ignore_mask).map(crop_fn)
 
         negative_embeddings = model.predict(dataset_neg)
-        negative_embeddings = negative_embeddings.reshape((-1, negative_embeddings.shape[2:]))
+        negative_embeddings = negative_embeddings.reshape((-1,) + negative_embeddings.shape[2:])
         # mean is OK here because we assume everything is negative
         negative_prototype = negative_embeddings.mean(axis=0)
 
@@ -85,19 +85,23 @@ def get_probabilities(conf: DictConfig,
         # add them to negative embeddings and recompute prototype?
         # try again until satisfied (no events over threshold)
         while True:
-            known_negative_embeddings = model.predict(dataset_neg_known)
-            known_negative_embeddings = known_negative_embeddings.reshape((-1, known_negative_embeddings.shape[2:]))
-            pos_probs = model.get_probability(positive_prototype, negative_prototype, known_negative_embeddings)
-            arbitrary_thresh = 0.25
+            bad_results = []
+            worst_prob = 0.
+            for batch in dataset_neg_known:
+                known_negative_embeddings = model(batch).numpy()
+                known_negative_embeddings = known_negative_embeddings.reshape((-1,) + known_negative_embeddings.shape[2:])
+                pos_probs = model.get_probability(positive_prototype, negative_prototype, known_negative_embeddings)
+                arbitrary_thresh = 0.25
 
-            bad_results = known_negative_embeddings[np.asarray(pos_probs) > arbitrary_thresh]
-            print("  Highest prob on negative: {}".format(max(pos_probs)))
+                bad_results += list(known_negative_embeddings[np.asarray(pos_probs) > arbitrary_thresh])
+                worst_prob = np.maximum(worst_prob, max(pos_probs))
+            print("  Highest prob on negative: {}".format(worst_prob))
             print("  Number of bad results: {}".format(len(bad_results)))
 
             if len(bad_results) == 0:
                 break
             else:
-                negative_embeddings = np.concatenate([negative_embeddings, bad_results])
+                negative_embeddings = np.concatenate([negative_embeddings, np.asarray(bad_results)])
                 negative_prototype = negative_embeddings.mean(axis=0)
 
         # TODO hardcoded magic numbers

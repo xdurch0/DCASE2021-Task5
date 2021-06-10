@@ -234,4 +234,4 @@ def get_on_and_offsets(thresholded_probs) -> Tuple[np.ndarray, np.ndarray]:
 from scipy import ndimage
 
 def smooth_probabilities(probs, avg_length):
-    return ndimage.gaussian_filter1d(probs, 1.*avg_length)
+    return ndimage.gaussian_filter1d(probs, 0.05*avg_length)

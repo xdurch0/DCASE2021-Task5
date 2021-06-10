@@ -14,10 +14,10 @@ path:
   feat_path: ${path.root_dir}/FeaturesSeg130Margin1KnownNeg_${features.type}
   feat_train: ${path.feat_path}/feat_train
   feat_eval:  ${path.feat_path}/feat_eval
-  model: ${path.root_dir}/ModelArchi1
+  model: ${path.root_dir}/ModelArchi1DistCNN
   best_model: ${path.model}/best_model
   last_model: ${path.model}/last_model
-  results: ${path.root_dir}/ResultsArchi1KnownNeg
+  results: ${path.root_dir}/ResultsArchi1DistCNN
 
 features:
   type: pcen_lowpass

@@ -58,9 +58,11 @@ def baseline_block(inp: tf.Tensor,
     if dims == 2:
         conv_fn = tfkl.Conv2D
         pool_fn = tfkl.MaxPool2D
+        drop_fn = tfkl.SpatialDropout2D
     else:
         conv_fn = tfkl.Conv1D
         pool_fn = tfkl.MaxPool1D
+        drop_fn = tfkl.SpatialDropout1D
 
     reg = tf.keras.regularizers.l2(L2)
     conv = conv_fn(filters,
@@ -83,7 +85,7 @@ def baseline_block(inp: tf.Tensor,
         activated = squeeze_excite(activated, scope=scope + "_se")
 
     if use_dropout:
-        activated = tfkl.SpatialDropout2D(DROPOUT)(activated)
+        activated = drop_fn(DROPOUT)(activated)
 
     if ((isinstance(pool_size, int) and pool_size > 1)
             or isinstance(pool_size, tuple)):
@@ -362,37 +364,37 @@ def distance_block(embedding_input, conf):
         concat = tfkl.Concatenate(
             name="cnn_concatenate_inputs")([distance_inp1, distance_inp2])
 
-        # TODO will crash if dims=1
-        b1 = baseline_block(concat, 64, 3,
-                            dims=2,
+        b1 = baseline_block(concat, 256, 3,
+                            dims=1,
                             activation="swish",
-                            pool_size=(1, 2),
+                            pool_size=2,
                             use_se=conf.model.squeeze_excite,
                             scope="cnn_distance_block1")
-        b2 = baseline_block(b1, 64, 3,
-                            dims=2,
+        b2 = baseline_block(b1, 256, 3,
+                            dims=1,
                             activation="swish",
-                            pool_size=1,
+                            pool_size=2,
                             use_se=conf.model.squeeze_excite,
                             scope="cnn_distance_block2")
-        b3 = baseline_block(b2, 64, 3,
-                            dims=2,
+        b3 = baseline_block(b2, 256, 3,
+                            dims=1,
                             activation="swish",
-                            pool_size=(2, 2),
+                            pool_size=2,
                             use_se=conf.model.squeeze_excite,
                             scope="cnn_distance_block3")
-        b4 = baseline_block(b3, 64, 3,
-                            dims=2,
+        b4 = baseline_block(b3, 256, 3,
+                            dims=1,
                             activation="swish",
-                            pool_size=1,
+                            pool_size=2,
                             use_se=conf.model.squeeze_excite,
                             scope="cnn_distance_block4")
 
         flat = tfkl.Flatten(name="cnn_distance_flatten")(b4)
         dense = tfkl.Dense(1, name="cnn_distance_to_size_1")(flat)
         bn = tfkl.BatchNormalization(name="cnn_distance_bn")(dense)
-        distance = tfkl.Activation(tf.nn.softplus,
-                                   name="cnn_distance_softplus")(bn)
+        distance = bn
+        #distance = tfkl.Activation(tf.nn.softplus,
+        #                           name="cnn_distance_softplus")(bn)
 
     else:
         raise ValueError("Invalid distance_fn specified: "

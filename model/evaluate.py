@@ -43,7 +43,7 @@ def get_probabilities(conf: DictConfig,
 
     known_negative_path = os.path.join(base_path, "negative_guaranteed.tfrecords")
     dataset_neg_known = tf.data.TFRecordDataset([known_negative_path])
-    dataset_neg_known = dataset_neg_known.map(parse_example)
+    dataset_neg_known = dataset_neg_known.map(parse_example).batch(conf.eval.batch_size).map(ignore_mask).map(crop_fn)
 
     pos_entries = np.array([entry[0] for entry in iter(dataset_pos)])
     pos_entries = model.get_all_crops(pos_entries[None])[0]

@@ -69,7 +69,7 @@ def fill_excluded(target_path: str,
                 start_frames_exclude,
                   end_frames_exclude) -> int:
     # candidates up to the beginning of final support event
-    start_frames = np.arange(start_frames_exclude[-1] - seg_len, hop_len)
+    start_frames = np.arange(0, start_frames_exclude[-1] - seg_len, hop_len)
     end_frames = start_frames + seg_len
 
     valid_starts = []

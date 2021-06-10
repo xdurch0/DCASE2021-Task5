@@ -120,7 +120,7 @@ def unet_dec_block(inp: tf.Tensor,
     if ((isinstance(unpool_size, int) and unpool_size > 1)
             or isinstance(unpool_size, tuple)):
         inp = unpool_fn(unpool_size,
-                        name=scope + "_pool")(inp)
+                        name=scope + "_unpool")(inp)
 
     reg = tf.keras.regularizers.l2(L2)
     conv = conv_fn(filters,
@@ -273,26 +273,14 @@ def body_block(preprocessed, conf):
                         pool_size=2,
                         use_se=conf.model.squeeze_excite,
                         scope="block1")  # 16 x 64
-    b2 = baseline_block(b1, 32, 3,
-                        dims=dims,
-                        activation="swish",
-                        pool_size=1,
-                        use_se=conf.model.squeeze_excite,
-                        scope="block2")  # 16 x 64
-    b3 = baseline_block(b2, 64, 3,
+    b3 = baseline_block(b1, 64, 3,
                         dims=dims,
                         activation="swish",
                         pool_size=2,
                         use_se=conf.model.squeeze_excite,
                         scope="block3")  # 8 x 32
-    b4 = baseline_block(b3, 64, 3,
-                        dims=dims,
-                        activation="swish",
-                        pool_size=1,
-                        use_se=conf.model.squeeze_excite,
-                        scope="block4")  # 8 x 32
 
-    dec1 = unet_dec_block(b4, filters=128, filter_size=3,
+    dec1 = unet_dec_block(b3, filters=128, filter_size=3,
                           dims=dims,
                           activation="swish",
                           unpool_size=(2, 1),
@@ -300,37 +288,21 @@ def body_block(preprocessed, conf):
                           use_se=conf.model.squeeze_excite,
                           use_dropout=True,
                           scope="d1")  # 16 x 32
-    dec2 = unet_dec_block(dec1, filters=128, filter_size=3,
-                          dims=dims,
-                          activation="swish",
-                          unpool_size=1,
-                          pool_size=(1, 2),
-                          use_se=conf.model.squeeze_excite,
-                          use_dropout=True,
-                          scope="d2")  # 16 x 16
-    dec3 = unet_dec_block(dec2, filters=128, filter_size=3,
+    dec3 = unet_dec_block(dec1, filters=256, filter_size=3,
                           dims=dims,
                           activation="swish",
                           unpool_size=(2, 1),
                           pool_size=1,
                           use_se=conf.model.squeeze_excite,
                           use_dropout=True,
-                          scope="d3")  # 32 x 16
-    dec4 = unet_dec_block(dec3, filters=128, filter_size=3,
-                          dims=dims,
-                          activation="swish",
-                          unpool_size=1,
-                          pool_size=(1, 2),
-                          use_se=conf.model.squeeze_excite,
-                          use_dropout=True,
-                          scope="d4")  # 32 x 8
+                          scope="d3")  # 32 x 32
 
     # TODO this does not work for 1d inputs lol
     if conf.model.pool == "freqs":
-        dec4 = tfkl.Lambda(lambda x: tf.reduce_max(x, axis=2),
-                         name="global_pool_freqs")(dec4)
+        dec3 = tfkl.Lambda(lambda x: tf.reduce_max(x, axis=2),
+                           name="global_pool_freqs")(dec3)
 
-    return dec4
+    return dec3
 
 
 def distance_block(embedding_input, conf):

@@ -10,6 +10,7 @@ import pandas as pd
 import tensorflow as tf
 from omegaconf import DictConfig
 
+from analyze.visualize import match_event_with_list
 from utils.conversions import time_to_frame, EVENT_ESTIMATES, correct_events
 from .transforms import (resample_audio, RawExtractor, FeatureExtractor,
                          extract_feature)
@@ -41,6 +42,38 @@ def fill_simple(target_path: str,
                                            seg_len,
                                            hop_len,
                                            margin_mode)
+    return count
+
+
+def fill_excluded(target_path: str,
+                features: np.ndarray,
+                seg_len: int,
+                hop_len: int,
+                start_frames_exclude,
+                  end_frames_exclude) -> int:
+    # candidates up to the beginning of final support event
+    start_frames = np.arange(start_frames_exclude[-1] - seg_len, hop_len)
+    end_frames = start_frames + seg_len
+
+    valid_starts = []
+    valid_ends = []
+    for start, end in zip(start_frames, end_frames):
+        if match_event_with_list(start, end, start_frames_exclude, end_frames_exclude, 0.00001):
+            continue
+        else:
+            valid_starts.append(start)
+            valid_ends.append(end)
+
+    print("    Found {} 'guaranteed' negative segments".format(len(valid_starts)))
+
+    with tf.io.TFRecordWriter(target_path) as writer:
+        count = write_events_from_features(writer,
+                                           valid_starts,
+                                           valid_ends,
+                                           features,
+                                           seg_len,
+                                           hop_len,
+                                           False)
     return count
 
 
@@ -225,6 +258,19 @@ def feature_transform(conf, mode):
             np.save(os.path.join(conf.path.feat_eval,
                                  name, "start_index_query.npy"),
                     np.int32(start_index_query))
+
+            print("Creating 'guaranteed negative' dataset")
+            negative_path2 = os.path.join(conf.path.feat_eval,
+                                         name, "negative_guaranteed.tfrecords")
+
+            start_times_exclude = np.array(start_times)[:(support_indices[-1]+1)]
+            end_times_exclude = np.array(end_times)[:(support_indices[-1]+1)]
+            fill_excluded(negative_path2,
+                          features,
+                          seg_len_frames,
+                          hop_seg_frames,
+                          start_times_exclude,
+                          end_times_exclude)
 
         return num_extract_eval
 

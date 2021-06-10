@@ -134,12 +134,13 @@ def get_events(probabilities: np.ndarray,
     else:
         fps = conf.features.sr / conf.features.hop_mel
 
-    hop_seg_frames = time_to_frame(conf.features.hop_seg, fps)
     start_time_query = start_index_query / fps
 
     on_off_sets = dict()
     for threshold in thresholds:
-        threshold = magic_thing * 2*threshold
+        old_thresh = threshold
+        if conf.eval.thresholding == "relative":
+            threshold = magic_thing * 2*threshold
 
         thresholded_probs = threshold_probabilities(probabilities, threshold,
                                                     conf.eval.thresholding)
@@ -151,35 +152,24 @@ def get_events(probabilities: np.ndarray,
         offset_times = offset_segments / fps
         offset_times = offset_times + start_time_query
 
-        on_off_sets[threshold] = (onset_times, offset_times)
+        on_off_sets[old_thresh] = (onset_times, offset_times)
 
     return on_off_sets
 
 
 def threshold_probabilities(probabilities: np.ndarray,
-                            threshold: float,
-                            mode: str) -> np.ndarray:
+                            threshold: float) -> np.ndarray:
     """Threshold event probabilities to 0/1.
 
     Parameters:
         probabilities: Event probabilities as estimated by a model.
         threshold: Value above which we recognize an event.
-        mode: absolute or relative.
 
     Returns:
         Sequence of 0s and 1s depending on the threshold.
 
     """
-    if mode == "absolute":
-        return np.where(probabilities > threshold, 1, 0)
-    elif mode == "relative":
-        avg_width = 10
-        local_averages = np.convolve(probabilities,
-                                     np.ones(avg_width) / avg_width,
-                                     "same")
-        return np.where(probabilities > threshold * local_averages, 1, 0)
-    else:
-        raise ValueError("Invalid mode {}".format(mode))
+    return np.where(probabilities > threshold, 1, 0)
 
 
 def get_on_and_offsets(thresholded_probs) -> Tuple[np.ndarray, np.ndarray]:

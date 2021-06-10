@@ -139,7 +139,7 @@ def main(conf: DictConfig):
                 thresh_est_path = os.path.join(conf.path.results,
                                                "thingy_" + audio_name[
                                                            :-4] + "_" + str(
-                                                   index))
+                                                   index) + ".npy")
                 thresh_est = np.load(thresh_est_path)
 
                 start_index_query = np.load(

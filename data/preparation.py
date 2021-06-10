@@ -262,6 +262,9 @@ def feature_transform(conf, mode):
                                             end_times_support,
                                             margin_mode=True)
 
+            avg_length = np.mean(end_times_support - start_times_support)
+            np.save(os.path.join(conf.path.feat_eval, name, "avg_length.npy"), avg_length)
+
             print("Creating query dataset")
             start_index_query = end_times[support_indices[-1]]
             query_path = os.path.join(conf.path.feat_eval,

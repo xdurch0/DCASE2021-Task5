@@ -145,11 +145,14 @@ def main(conf: DictConfig):
                 start_index_query = np.load(
                     os.path.join(conf.path.feat_eval, feat_dir,
                                  "start_index_query.npy"))
+                avg_length = np.load(os.path.join(conf.path.feat_eval, feat_dir,
+                                                  "avg_length.npy"))
                 on_off_sets = get_events(probs,
                                          thresholds,
                                          start_index_query,
                                          conf,
-                                         thresh_est)
+                                         thresh_est,
+                                         avg_length)
 
                 for thresh, (onset, offset) in on_off_sets.items():
                     name = np.repeat(audio_name, len(onset))

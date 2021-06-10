@@ -41,9 +41,9 @@ def get_probabilities(conf: DictConfig,
     dataset_pos = tf.data.TFRecordDataset([positive_path])
     dataset_pos = dataset_pos.map(parse_example)
 
-    known_negative_path = os.path.join(base_path, "negative_guaranteed.tfrecords")
-    dataset_neg_known = tf.data.TFRecordDataset([known_negative_path])
-    dataset_neg_known = dataset_neg_known.map(parse_example).batch(conf.eval.batch_size).map(ignore_mask).map(crop_fn)
+    #known_negative_path = os.path.join(base_path, "negative_guaranteed.tfrecords")
+    #dataset_neg_known = tf.data.TFRecordDataset([known_negative_path])
+    #dataset_neg_known = dataset_neg_known.map(parse_example).batch(conf.eval.batch_size).map(ignore_mask).map(crop_fn)
 
     pos_entries = np.array([entry[0] for entry in iter(dataset_pos)])
     pos_entries = model.get_all_crops(pos_entries[None])[0]
@@ -84,7 +84,7 @@ def get_probabilities(conf: DictConfig,
         # get all events that get prob > some threshold (say, 0.2)
         # add them to negative embeddings and recompute prototype?
         # try again until satisfied (no events over threshold)
-        while True:
+        while False:
             bad_results = []
             worst_prob = 0.
             for batch in dataset_neg_known:
@@ -144,7 +144,8 @@ def get_events(probabilities: np.ndarray,
                thresholds: Sequence,
                start_index_query: int,
                conf: DictConfig,
-               magic_thing) -> dict:
+               magic_thing,
+               avg_length) -> dict:
     """Threshold event probabilities and get event onsets/offsets.
 
     Parameters:
@@ -164,6 +165,8 @@ def get_events(probabilities: np.ndarray,
         fps = conf.features.sr / conf.features.hop_mel
 
     start_time_query = start_index_query / fps
+
+    probabilities = smooth_probabilities(probabilities, avg_length)
 
     on_off_sets = dict()
     for threshold in thresholds:
@@ -227,3 +230,8 @@ def get_on_and_offsets(thresholded_probs) -> Tuple[np.ndarray, np.ndarray]:
 # in such a way that edge artifacts are avoided, but also no time frame is skipped or doubled
 # in get_events then, we should only have to change things such that the times
 # are not computed in terms of segments, but in terms of frames instead (use fps directly)
+
+from scipy import ndimage
+
+def smooth_probabilities(probs, avg_length):
+    return ndimage.gaussian_filter1d(probs, 1.*avg_length)

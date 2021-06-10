@@ -142,8 +142,7 @@ def get_events(probabilities: np.ndarray,
         if conf.eval.thresholding == "relative":
             threshold = magic_thing * 2*threshold
 
-        thresholded_probs = threshold_probabilities(probabilities, threshold,
-                                                    conf.eval.thresholding)
+        thresholded_probs = threshold_probabilities(probabilities, threshold)
         onset_segments, offset_segments = get_on_and_offsets(thresholded_probs)
 
         onset_times = onset_segments / fps

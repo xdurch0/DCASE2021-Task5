@@ -10,7 +10,6 @@ import pandas as pd
 import tensorflow as tf
 from omegaconf import DictConfig
 
-from analyze.visualize import match_event_with_list
 from utils.conversions import time_to_frame, EVENT_ESTIMATES, correct_events
 from .transforms import (resample_audio, RawExtractor, FeatureExtractor,
                          extract_feature)
@@ -18,6 +17,24 @@ from .transforms import (resample_audio, RawExtractor, FeatureExtractor,
 pd.options.mode.chained_assignment = None
 
 MARGIN_FRAMES = 1  # TODO ugh
+
+
+def match_event_with_list(event_start, event_end, start_list, end_list,
+                          min_iou=0.3):
+    for other_start, other_end in zip(start_list, end_list):
+        if event_start > other_end:  # too early in list, check further
+            continue
+        elif event_end < other_start:  # too late in list -- no match
+            break
+        else:
+            iou_numerator = (np.minimum(event_end, other_end)
+                             - np.maximum(event_start, other_start))
+            iou_denominator = (np.maximum(event_end, other_end)
+                               - np.minimum(event_start, other_start))
+            iou = iou_numerator / iou_denominator
+            if iou >= min_iou:
+                return True
+    return False
 
 
 def fill_simple(target_path: str,

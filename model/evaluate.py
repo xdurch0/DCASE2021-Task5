@@ -11,6 +11,8 @@ from omegaconf import DictConfig
 from utils.conversions import time_to_frame
 from .dataset import parse_example
 
+from scipy.cluster.vq import kmeans
+
 
 def get_probabilities(conf: DictConfig,
                       base_path: str,
@@ -51,14 +53,17 @@ def get_probabilities(conf: DictConfig,
     pos_masks = np.array([entry[1] for entry in iter(dataset_pos)])
     pos_masks = model.get_all_crops(pos_masks[None])[0]
     # TODO this hardcodes embeddings with 2 extra dimensions (freqs, channels)
-    pos_masks = pos_masks[..., None, None]
+    pos_masks = pos_masks[..., None, None].astype(np.int32)
+    pos_masks = pos_masks.reshape((-1,) + pos_masks.shape[2:])
 
     positive_embeddings = model(pos_entries, training=False)
+    positive_embeddings = positive_embeddings.reshape((-1,) + positive_embeddings.shape[2:])
+
 
     #positive_embeddings = positive_embeddings[:, 8:-7]
     #pos_masks = pos_masks[:, 8:-7]
-    masked_embeddings = positive_embeddings * pos_masks
-    positive_prototype = tf.reduce_sum(masked_embeddings, axis=[0, 1]) / (tf.reduce_sum(pos_masks, axis=[0, 1]) + 1e-8)
+    masked_embeddings = positive_embeddings[pos_masks == 1]
+    positive_prototype = positive_embeddings.sum(axis=0)
 
     probs_per_iter = []
     pos_prob_estimate_per_iter = []

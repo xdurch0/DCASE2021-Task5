@@ -11,7 +11,7 @@ from omegaconf import DictConfig
 from utils.conversions import time_to_frame
 from .dataset import parse_example
 
-from scipy.cluster.vq import kmeans
+from scipy.cluster.vq import kmeans, vq
 
 
 def get_probabilities(conf: DictConfig,
@@ -51,19 +51,30 @@ def get_probabilities(conf: DictConfig,
     pos_entries = model.get_all_crops(pos_entries[None])[0]
 
     pos_masks = np.array([entry[1] for entry in iter(dataset_pos)])
-    pos_masks = model.get_all_crops(pos_masks[None])[0]
+    pos_masks = model.get_all_crops(pos_masks[None])[0].numpy()
     # TODO this hardcodes embeddings with 2 extra dimensions (freqs, channels)
-    pos_masks = pos_masks[..., None, None].astype(np.int32)
-    pos_masks = pos_masks.reshape((-1,) + pos_masks.shape[2:])
+    pos_masks = pos_masks.astype(np.int32)
+    pos_masks = pos_masks.reshape(-1)
 
-    positive_embeddings = model(pos_entries, training=False)
+    positive_embeddings = model(pos_entries, training=False).numpy()
     positive_embeddings = positive_embeddings.reshape((-1,) + positive_embeddings.shape[2:])
-
 
     #positive_embeddings = positive_embeddings[:, 8:-7]
     #pos_masks = pos_masks[:, 8:-7]
     masked_embeddings = positive_embeddings[pos_masks == 1]
-    positive_prototype = positive_embeddings.sum(axis=0)
+    #positive_prototype = masked_embeddings.mean(axis=0)
+
+    # k-means?
+    print("k means for positive embeddings...")
+    n_clusters = 2
+    positive_embeddings_flat = masked_embeddings.reshape((masked_embeddings.shape[0], -1))
+    cluster_centers, _ = kmeans(positive_embeddings_flat, n_clusters)
+    assignments, _ = vq(positive_embeddings_flat, cluster_centers)
+
+    positive_prototypes = []
+    for cluster_ind in range(n_clusters):
+        assigned_embeddings = masked_embeddings[assignments == cluster_ind]
+        positive_prototypes.append(assigned_embeddings.mean(axis=0))
 
     probs_per_iter = []
     pos_prob_estimate_per_iter = []
@@ -82,8 +93,21 @@ def get_probabilities(conf: DictConfig,
 
         negative_embeddings = model.predict(dataset_neg)
         negative_embeddings = negative_embeddings.reshape((-1,) + negative_embeddings.shape[2:])
+
+        negative_embeddings_flat = negative_embeddings.reshape((negative_embeddings.shape[0], -1))
+        cluster_centers, _ = kmeans(negative_embeddings_flat, n_clusters)
+        assignments, _ = vq(negative_embeddings_flat, cluster_centers)
+        negative_prototypes = []
+        for cluster_ind in range(n_clusters):
+            assigned_embeddings = negative_embeddings[assignments == cluster_ind]
+            negative_prototypes.append(assigned_embeddings.mean(axis=0))
+
+        prototypes = np.concatenate(positive_prototypes + negative_prototypes, axis=0)
+
+        print("prototype number:", len(prototypes))
+
         # mean is OK here because we assume everything is negative
-        negative_prototype = negative_embeddings.mean(axis=0)
+        #negative_prototype = negative_embeddings.mean(axis=0)
 
         # now: classify known negative events using the prototypes
         # get all events that get prob > some threshold (say, 0.2)
@@ -116,8 +140,9 @@ def get_probabilities(conf: DictConfig,
             query_centers = query_embeddings[:, 8:-7]
             query_flat_time = tf.reshape(query_centers, (query_centers.shape[0] * query_centers.shape[1],) + query_embeddings.shape[2:])
 
-            probability_pos = model.get_probability(
-                positive_prototype, negative_prototype, query_flat_time)
+            #probability_pos = model.get_probability(
+            #    positive_prototype, negative_prototype, query_flat_time)
+            probability_pos = model_prob_multi(prototypes, query_flat_time, model)
             event_probabilities.extend(probability_pos)
         # TODO hardcoded...
         event_probabilities = [0.]*(8 + 1) + event_probabilities
@@ -125,6 +150,7 @@ def get_probabilities(conf: DictConfig,
         probs_per_iter.append(event_probabilities)
 
         # leave-one-out classification of support set to get good threshold??
+        """
         total_prob = 0
         total_count = 0
         for ind in range(masked_embeddings.shape[0]):
@@ -140,9 +166,9 @@ def get_probabilities(conf: DictConfig,
 
         pos_prob_estimate = total_prob / total_count
         print("  Prob estimate: {}".format(pos_prob_estimate))
-        pos_prob_estimate_per_iter.append(pos_prob_estimate)
+        pos_prob_estimate_per_iter.append(pos_prob_estimate)"""
 
-    return np.mean(np.array(probs_per_iter), axis=0), np.mean(pos_prob_estimate_per_iter)
+    return np.mean(np.array(probs_per_iter), axis=0), 1.
 
 
 def get_events(probabilities: np.ndarray,
@@ -236,7 +262,22 @@ def get_on_and_offsets(thresholded_probs) -> Tuple[np.ndarray, np.ndarray]:
 # in get_events then, we should only have to change things such that the times
 # are not computed in terms of segments, but in terms of frames instead (use fps directly)
 
+
 from scipy import ndimage
+
 
 def smooth_probabilities(probs, avg_length):
     return ndimage.gaussian_filter1d(probs, 0.05*avg_length)
+
+
+def model_prob_multi(prototypes, queries, model):
+    distances = model.compute_distance(queries, prototypes)
+    logits = -distances
+
+    probs = tf.nn.softmax(logits, axis=-1)
+
+    n_types = len(prototypes)
+
+    probs_pos = probs[:, :(n_types // 2)].numpy().sum(axis=-1).tolist()
+
+    return probs_pos

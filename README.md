@@ -1,3 +1,7 @@
+# PLEASE NOTE
+
+This repo is currently in a messy state. It should work if using the current config, but there are most likely options that were included for experiments and then abandoned, and which will now crash the program. Also, the list of config parameters below is outdated. We will try to clean up the repository soon™!
+
 # DCASE2021-Task5
 Code for http://dcase.community/challenge2021/task-few-shot-bioacoustic-event-detection
 

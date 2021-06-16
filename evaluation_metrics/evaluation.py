@@ -9,7 +9,7 @@ import numpy as np
 import pandas as pd
 from scipy import stats
 
-from .metrics import match_events
+from metrics import match_events
 
 MIN_EVAL_VALUE = 0.00001
 N_SHOTS = 5

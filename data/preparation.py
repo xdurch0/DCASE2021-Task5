@@ -419,6 +419,8 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
     for start_ind, end_ind in zip(start_frames, end_frames):
         start_margin = start_ind - use_margin
         end_margin = end_ind + use_margin
+        if start_margin < 0:
+            start_margin = 0
 
         actual_length = end_ind - start_ind
         margin_length = end_margin - start_margin
@@ -435,6 +437,9 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
                 feature_patch = event_features[shift:(shift + seg_len)]
                 mask_patch = event_mask[shift:(shift + seg_len)]
 
+                if len(feature_patch) != seg_len:
+                    print("UH OH! feature patch len is", len(feature_patch))
+                    print(start_margin, end_margin, shift, event_features.shape)
                 assert len(feature_patch) == seg_len  # sanity check
 
                 tf_writer.write(example_from_patch(feature_patch, mask_patch))
@@ -443,6 +448,8 @@ def write_events_from_features(tf_writer: tf.io.TFRecordWriter,
 
             feature_patch_last = event_features[-seg_len:]
             mask_patch_last = event_mask[-seg_len:]
+            if len(feature_patch_last) != seg_len:
+                print("AH SHIT! feat patch last len is ", len(feature_patch_last))
 
             assert len(feature_patch_last) == seg_len  # sanity check
 
